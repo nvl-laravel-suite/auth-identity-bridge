@@ -1,0 +1,12 @@
+{
+    "schema_version": 1,
+    "configs": {
+        "nvl-auth-identity-bridge": {
+            "common": [
+                "enabled",
+                "migrations.enabled"
+            ],
+            "advanced": []
+        }
+    }
+}

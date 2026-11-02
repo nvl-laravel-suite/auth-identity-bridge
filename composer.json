@@ -1,0 +1,94 @@
+{
+    "name": "nvl/auth-identity-bridge",
+    "description": "Standalone Laravel bridge for Identity Platform OIDC, native users, authorization, synchronization and service targets.",
+    "type": "library",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.4",
+        "ext-json": "*",
+        "ext-openssl": "*",
+        "ext-sodium": "*",
+        "facile-it/php-openid-client": "^1.0",
+        "firebase/php-jwt": "^7.2.1",
+        "guzzlehttp/guzzle": "^7.9",
+        "guzzlehttp/psr7": "^2.7",
+        "laravel/framework": "^13.0"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.27",
+        "orchestra/testbench": "^11.0",
+        "phpunit/phpunit": "^12.5",
+        "pestphp/pest": "^4.0",
+        "larastan/larastan": "^3.10"
+    },
+    "autoload": {
+        "psr-4": {
+            "IdentityPlatform\\Laravel\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "IdentityPlatform\\Laravel\\Tests\\": "tests/"
+        },
+        "exclude-from-classmap": [
+            "tests/Support/AppAdapterFixture.php"
+        ]
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "IdentityPlatform\\Laravel\\Providers\\AuthIdentityBridgeServiceProvider"
+            ]
+        },
+        "branch-alias": {
+            "dev-main": "7.x-dev"
+        }
+    },
+    "scripts": {
+        "test": "pest --configuration=phpunit.xml.dist --test-directory=tests --compact",
+        "format:check": "pint --test",
+        "verify": [
+            "@format:check",
+            "@test"
+        ],
+        "format": "pint --format agent",
+        "format:test": "pint --test --format agent"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "php-http/discovery": false
+        }
+    },
+    "archive": {
+        "exclude": [
+            "/.env*",
+            "/.git*",
+            "/.phpunit*",
+            "/auth.json",
+            "/composer.lock",
+            "/phpunit.xml*",
+            "/tests",
+            "/vendor",
+            "/.temp",
+            "/phpstan.neon*"
+        ]
+    },
+    "homepage": "https://github.com/nvl-laravel-suite/auth-identity-bridge",
+    "authors": [
+        {
+            "name": "Nicolas Vlachos",
+            "homepage": "https://github.com/nicolasvlachos",
+            "role": "Developer"
+        }
+    ],
+    "support": {
+        "source": "https://github.com/nvl-laravel-suite/auth-identity-bridge",
+        "docs": "https://github.com/nvl-laravel-suite/auth-identity-bridge#readme",
+        "issues": "https://github.com/nvl-laravel-suite/auth-identity-bridge/issues",
+        "security": "https://github.com/nvl-laravel-suite/auth-identity-bridge/security/policy"
+    },
+    "conflict": {
+        "symfony/mime": "<8.1.10"
+    }
+}

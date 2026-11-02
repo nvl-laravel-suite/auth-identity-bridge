@@ -1,0 +1,250 @@
+{
+    "schema_version": 1,
+    "package": "nvl/auth-identity-bridge",
+    "psr4": {
+        "IdentityPlatform\\Laravel\\": "src"
+    },
+    "symbols": {
+        "IdentityPlatform\\Laravel\\ApplicationContext\\ApplicationContextManager": {
+            "kind": "class",
+            "file": "src/ApplicationContext/ApplicationContextManager.php",
+            "methods": [
+                "__construct",
+                "assertEligible",
+                "clear",
+                "current",
+                "forSource",
+                "list",
+                "select"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "IdentityPlatform\\Laravel\\ApplicationContext\\ApplicationContextRegistry": {
+            "kind": "class",
+            "file": "src/ApplicationContext/ApplicationContextRegistry.php",
+            "methods": [
+                "provider",
+                "register"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "IdentityPlatform\\Laravel\\Auth\\BrowserLifecycle": {
+            "kind": "class",
+            "file": "src/Auth/BrowserLifecycle.php",
+            "methods": [
+                "__construct",
+                "centralSignOut",
+                "completeSignIn",
+                "discoverContexts",
+                "finishLogout",
+                "selectContext",
+                "signOut",
+                "startSignIn",
+                "state"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "IdentityPlatform\\Laravel\\Authorization\\AbilityRegistry": {
+            "kind": "class",
+            "file": "src/Authorization/AbilityRegistry.php",
+            "methods": [
+                "family",
+                "map",
+                "mapping",
+                "owns"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "IdentityPlatform\\Laravel\\Authorization\\IdentityAccess": {
+            "kind": "class",
+            "file": "src/Authorization/IdentityAccess.php",
+            "methods": [
+                "__construct",
+                "actor",
+                "assertFreshContext",
+                "assertOwner",
+                "contextVersion",
+                "currentDecisionView",
+                "hasPermission",
+                "hasSelectedRole",
+                "isImpersonating",
+                "organizationId",
+                "principal",
+                "projection",
+                "setRequest",
+                "user"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "IdentityPlatform\\Laravel\\Authorization\\OrdinaryActionRunner": {
+            "kind": "class",
+            "file": "src/Authorization/OrdinaryActionRunner.php",
+            "methods": [
+                "__construct",
+                "run"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "IdentityPlatform\\Laravel\\Consumer\\CommandJournal": {
+            "kind": "class",
+            "file": "src/Consumer/CommandJournal.php",
+            "methods": [
+                "__construct",
+                "committed",
+                "forActor",
+                "original",
+                "pendingRefreshIds",
+                "refresh",
+                "retain",
+                "state",
+                "validate"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "IdentityPlatform\\Laravel\\Consumer\\ConsumerClient": {
+            "kind": "class",
+            "file": "src/Consumer/ConsumerClient.php",
+            "methods": [
+                "__construct",
+                "call",
+                "operationStatus",
+                "readMetadata",
+                "readProfile",
+                "report",
+                "updateMetadata",
+                "updateProfile"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "IdentityPlatform\\Laravel\\Consumer\\ManagedOperations": {
+            "kind": "trait",
+            "file": "src/Consumer/ManagedOperations.php",
+            "methods": [
+                "operationStatus",
+                "readMetadata",
+                "readProfile",
+                "updateMetadata",
+                "updateProfile"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "IdentityPlatform\\Laravel\\Delegation\\DelegatedActionRunner": {
+            "kind": "class",
+            "file": "src/Delegation/DelegatedActionRunner.php",
+            "methods": [
+                "__construct",
+                "run"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "IdentityPlatform\\Laravel\\Facades\\Identity": {
+            "kind": "class",
+            "file": "src/Facades/Identity.php",
+            "methods": [
+                "browser",
+                "consumer"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "IdentityPlatform\\Laravel\\Identity": {
+            "kind": "class",
+            "file": "src/Identity.php",
+            "methods": [
+                "__construct",
+                "browser",
+                "byBinding",
+                "consumer"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "IdentityPlatform\\Laravel\\Services\\ServiceTokenManager": {
+            "kind": "class",
+            "file": "src/Services/ServiceTokenManager.php",
+            "methods": [
+                "__construct",
+                "target"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "IdentityPlatform\\Laravel\\Support\\ConsumerGraph": {
+            "kind": "class",
+            "file": "src/Support/ConsumerGraph.php",
+            "methods": [
+                "__construct",
+                "__serialize"
+            ],
+            "properties": [
+                "context"
+            ],
+            "constants": [
+                "SERVICES"
+            ]
+        },
+        "IdentityPlatform\\Laravel\\Sync\\ImportRunner": {
+            "kind": "class",
+            "file": "src/Sync/ImportRunner.php",
+            "methods": [
+                "__construct",
+                "__serialize",
+                "run",
+                "safeCode"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "IdentityPlatform\\Laravel\\Sync\\UserImportSourceRegistry": {
+            "kind": "class",
+            "file": "src/Sync/UserImportSourceRegistry.php",
+            "methods": [
+                "register",
+                "resolve"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "IdentityPlatform\\Laravel\\Sync\\UserSyncManager": {
+            "kind": "class",
+            "file": "src/Sync/UserSyncManager.php",
+            "methods": [
+                "__construct",
+                "process",
+                "reconcile",
+                "request",
+                "requestBinding"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "IdentityPlatform\\Laravel\\Users\\NativeUserFactory": {
+            "kind": "interface",
+            "file": "src/Users/NativeUserFactory.php",
+            "methods": [
+                "create"
+            ],
+            "properties": [],
+            "constants": []
+        },
+        "IdentityPlatform\\Laravel\\Users\\NativeUserMapper": {
+            "kind": "interface",
+            "file": "src/Users/NativeUserMapper.php",
+            "methods": [
+                "synchronize"
+            ],
+            "properties": [],
+            "constants": []
+        }
+    }
+}

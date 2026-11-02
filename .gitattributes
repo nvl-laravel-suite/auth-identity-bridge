@@ -1,0 +1,12 @@
+# BEGIN NVL COMPOSER EXPORTS
+/.env* export-ignore
+/.git* export-ignore
+/.phpunit* export-ignore
+/auth.json export-ignore
+/composer.lock export-ignore
+/phpunit.xml* export-ignore
+/tests export-ignore
+/vendor export-ignore
+/.temp export-ignore
+/phpstan.neon* export-ignore
+# END NVL COMPOSER EXPORTS

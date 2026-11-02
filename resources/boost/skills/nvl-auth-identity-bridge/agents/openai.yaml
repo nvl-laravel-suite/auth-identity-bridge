@@ -1,0 +1,4 @@
+interface:
+  display_name: "NVL Auth Identity Bridge"
+  short_description: "Integrate Laravel with Identity Platform safely"
+  default_prompt: "Use $nvl-auth-identity-bridge to integrate this Laravel consumer."

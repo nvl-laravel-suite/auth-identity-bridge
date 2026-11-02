@@ -1,0 +1,101 @@
+<?php
+
+declare(strict_types=1);
+
+namespace IdentityPlatform\Laravel\Support;
+
+use Closure;
+use IdentityPlatform\Laravel\Auth\IdentityRequestGuard;
+use IdentityPlatform\Laravel\Authorization\IdentityAccess;
+use IdentityPlatform\Laravel\Exceptions\IdentityException;
+use Illuminate\Auth\AuthManager;
+use Illuminate\Contracts\Container\Container;
+use Illuminate\Contracts\Routing\ResponseFactory;
+use Illuminate\Cookie\CookieJar;
+use Illuminate\Http\Request;
+use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Facades\Facade;
+
+/** Sequential-worker adapter. Does not claim concurrent coroutine isolation. */
+final readonly class FrameworkSessionScope
+{
+    public function __construct(private Container $app, private ConsumerRegistry $registry) {}
+
+    public function run(ConsumerGraph $graph, Request $request, Closure $next, bool $browser = true): mixed
+    {
+        $previous = (Closure::bind(static fn () => Facade::$resolvedInstance[IdentityAccess::class] ?? null, null, Facade::class))();
+        Facade::clearResolvedInstance(IdentityAccess::class);
+        try {
+            return $browser ? $this->runBrowser($graph, $request, $next) : $next($request);
+        } finally {
+            Facade::clearResolvedInstance(IdentityAccess::class);
+            if ($previous !== null) {
+                (Closure::bind(static function () use ($previous): void {
+                    Facade::$resolvedInstance[IdentityAccess::class] = $previous;
+                }, null, Facade::class))();
+            }
+        }
+    }
+
+    private function runBrowser(ConsumerGraph $graph, Request $request, Closure $next): mixed
+    {
+        // Both framework redirect entry points retain the session store they first resolve.
+        $keys = ['session', 'session.store', 'auth', 'auth.driver', 'cookie', StartSession::class, 'redirect', ResponseFactory::class];
+        $instances = array_intersect_key(ContainerInstances::all($this->app), array_flip($keys));
+        $facades = (Closure::bind(static fn () => array_intersect_key(Facade::$resolvedInstance ?? [], array_flip(['session', 'auth', 'cookie', 'redirect', ResponseFactory::class])), null, Facade::class))();
+        $config = $this->app->make('config');
+        $sessionConfig = $config->get('session');
+        $authConfig = $config->get('auth');
+        $userResolver = $request->getUserResolver();
+        $session = (Closure::bind(static fn () => $request->session, null, \Symfony\Component\HttpFoundation\Request::class))();
+        try {
+            $settings = $graph->context->sessionSettings();
+            $config->set('session', $settings);
+            foreach ($keys as $key) {
+                $this->app->forgetInstance($key);
+            }
+            foreach (['session', 'auth', 'cookie', 'redirect', ResponseFactory::class] as $key) {
+                Facade::clearResolvedInstance($key);
+            }
+            $this->app->instance('cookie', (new CookieJar)->setDefaultPathAndDomain($settings['path'], $settings['domain'], $settings['secure'], $settings['same_site']));
+            $this->app->instance('session', new ConsumerSessionManager($this->app, $graph->context, $graph->context->name() === $this->registry->defaultName()));
+            $guardName = $graph->context->value('routes.guard');
+            $config->set('auth.defaults.guard', $guardName);
+            $config->set('auth.guards.'.$guardName, ['driver' => 'identity']);
+            $auth = new AuthManager($this->app);
+            $auth->extend('identity', static fn () => new IdentityRequestGuard(static function () use ($graph) {
+                try {
+                    return $graph->make(IdentityAccess::class)->user();
+                } catch (IdentityException $error) {
+                    if ($error->errorCode === 'delegation_check_required') {
+                        return null;
+                    }
+                    throw $error;
+                }
+            }, $request));
+            $this->app->instance('auth', $auth);
+            $request->setUserResolver(static fn ($guard = null) => $auth->guard($guard)->user());
+
+            return $next($request);
+        } finally {
+            $config->set('session', $sessionConfig);
+            $config->set('auth', $authConfig);
+            foreach ($keys as $key) {
+                $this->app->forgetInstance($key);
+                if (array_key_exists($key, $instances)) {
+                    $this->app->instance($key, $instances[$key]);
+                }
+            }
+            (Closure::bind(static function () use ($facades): void {
+                foreach (['session', 'auth', 'cookie', 'redirect', ResponseFactory::class] as $key) {
+                    unset(Facade::$resolvedInstance[$key]);
+                }
+                Facade::$resolvedInstance = array_replace(Facade::$resolvedInstance ?? [], $facades);
+            }, null, Facade::class))();
+            $request->setUserResolver($userResolver);
+            (Closure::bind(static function () use ($request, $session): void {
+                $request->session = $session;
+            }, null, \Symfony\Component\HttpFoundation\Request::class))();
+        }
+    }
+}
