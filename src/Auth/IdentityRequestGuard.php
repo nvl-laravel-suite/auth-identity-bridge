@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 /** Cached authentication belongs to one request, including in persistent workers. */
 final class IdentityRequestGuard extends RequestGuard
 {
-    public function setRequest(Request $request)
+    public function setRequest(Request $request): static
     {
         $this->forgetUser();
 

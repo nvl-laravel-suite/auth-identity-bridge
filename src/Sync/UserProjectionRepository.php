@@ -20,6 +20,10 @@ class UserProjectionRepository
         return $user ? $this->present($user) : null;
     }
 
+    /**
+     * @param  array<string, mixed>  $profile
+     * @return array{IdentityUser, bool}
+     */
     public function synchronize(string $issuer, string $subject, array $profile): array
     {
         $identityKey = hash('sha256', $issuer."\0".$subject);

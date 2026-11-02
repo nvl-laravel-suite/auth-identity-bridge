@@ -9,11 +9,17 @@ use IdentityPlatform\Laravel\Users\NativeValueTransform;
 
 final class NullableTimestamp implements NativeValueTransform
 {
+    /**
+     * @param  array<array-key, mixed>  $options
+     */
     public static function validate(array $options): void
     {
         Contract::require($options === [], 'identity_user_mapping_invalid', 503);
     }
 
+    /**
+     * @param  array<array-key, mixed>  $options
+     */
     public function transform(mixed $value, array $options): mixed
     {
         if ($value === null) {

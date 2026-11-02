@@ -6,6 +6,7 @@ namespace IdentityPlatform\Laravel\Http\Controllers;
 
 use IdentityPlatform\Laravel\Callbacks\CallbackReceiver;
 use IdentityPlatform\Laravel\Exceptions\IdentityException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Throwable;
 
@@ -13,7 +14,7 @@ class CallbackController
 {
     public function __construct(private CallbackReceiver $callbacks) {}
 
-    public function event(Request $request)
+    public function event(Request $request): JsonResponse
     {
         return $this->run(function () use ($request) {
             if ($this->mediaType($request) !== 'application/json') {
@@ -24,7 +25,7 @@ class CallbackController
         });
     }
 
-    public function logout(Request $request)
+    public function logout(Request $request): JsonResponse
     {
         return $this->run(function () use ($request) {
             if ($this->mediaType($request) !== 'application/x-www-form-urlencoded') {
@@ -35,7 +36,10 @@ class CallbackController
         });
     }
 
-    private function run(callable $work)
+    /**
+     * @param  callable(): array{duplicate: bool, affected: int}  $work
+     */
+    private function run(callable $work): JsonResponse
     {
         try {
             $response = response()->json($work());

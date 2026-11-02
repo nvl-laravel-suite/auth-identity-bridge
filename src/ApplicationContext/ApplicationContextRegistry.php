@@ -11,9 +11,10 @@ use IdentityPlatform\Laravel\Exceptions\IdentityException;
  */
 final class ApplicationContextRegistry
 {
+    /** @var array<string, array<string, class-string<ApplicationContextProvider>>> */
     private array $providers = [];
 
-    /** @param class-string<ApplicationContextProvider> $provider */
+    /** @param string $provider Trusted registration validates the implementation class at runtime. */
     public function register(string $consumer, string $kind, string $provider): void
     {
         if (! preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $kind) || ! is_a($provider, ApplicationContextProvider::class, true) || isset($this->providers[$consumer][$kind])) {
@@ -22,6 +23,9 @@ final class ApplicationContextRegistry
         $this->providers[$consumer][$kind] = $provider;
     }
 
+    /**
+     * @return class-string<ApplicationContextProvider>
+     */
     public function provider(string $consumer, string $kind): string
     {
         return $this->providers[$consumer][$kind] ?? throw new IdentityException('application_context_unknown', 422);

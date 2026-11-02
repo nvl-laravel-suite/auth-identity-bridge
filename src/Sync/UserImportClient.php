@@ -15,7 +15,10 @@ class UserImportClient
 {
     public function __construct(private IdentityConfig $config, private IdentityHttp $http) {}
 
-    /** Imported password hashes stay in this explicit request, never in queued jobs or local profiles. */
+    /** Imported password hashes stay in this explicit request, never in queued jobs or local profiles.
+     *
+     * @param  array<array-key, mixed>  $users
+     */
     public function import(#[\SensitiveParameter] array $users): UserImportResult
     {
         $sources = $this->preflight($users);
@@ -23,7 +26,13 @@ class UserImportClient
         return UserImportResult::validate($this->http->sync('profiles.import', ['users' => $users]), $this->config, $sources);
     }
 
-    /** Read-only validation shared by the runner and dry run. */
+    /** Read-only validation shared by the runner and dry run.
+     *
+     * @param  array<array-key, mixed>  $users
+     * @return list<string>
+     *
+     * @phpstan-assert =non-empty-list<array{sourceUserId: string, name: string, email: string, emailVerified: bool, active?: bool, passwordHash?: string|null, ...<string, mixed>}> $users
+     */
     public function preflight(#[\SensitiveParameter] array $users): array
     {
         Contract::require($this->config->value('sync.enabled', false) === true && $this->config->value('sync.import_enabled', false) === true, 'user_import_disabled', 404);
@@ -39,7 +48,7 @@ class UserImportClient
                 && (! isset($user['passwordHash']) || (is_string($user['passwordHash']) && strlen($user['passwordHash']) >= 20 && strlen($user['passwordHash']) <= 512))
                 && (! array_key_exists('roleKeys', $user) || (Contract::strings($user['roleKeys'], true) && count($user['roleKeys']) <= 50)), 'user_import_input_invalid', 422);
             if (isset($user['passwordHash'])) {
-                Contract::require(ImportedPasswordHash::supported($user['passwordHash']), 'user_import_hash_unsupported', 422);
+                Contract::require(is_string($user['passwordHash']) && ImportedPasswordHash::supported($user['passwordHash']), 'user_import_hash_unsupported', 422);
             }
             $email = strtolower($user['email']);
             Contract::require(! in_array($user['sourceUserId'], $sources, true) && ! in_array($email, $emails, true), 'user_import_input_invalid', 422);

@@ -21,6 +21,14 @@ class OrdinaryActionRunner
 {
     public function __construct(private SessionManager $sessions, private SessionRepository $rows, private OverlayRepository $overlays, private IdentityConfig $config) {}
 
+    /**
+     * @template TResource
+     * @template TResult
+     *
+     * @param  Closure(): TResource  $lockResource
+     * @param  Closure(TResource, Principal): TResult  $mutate
+     * @return TResult
+     */
     public function run(Request $request, Closure $lockResource, Closure $mutate): mixed
     {
         if ($request->isMethodSafe()) {
@@ -78,10 +86,10 @@ class OrdinaryActionRunner
     {
         $decision = $principal->decision;
         if (($decision['contract'] ?? null) !== 'platform-authorization-snapshot.v1' || ! array_key_exists('delegation', $decision) || $decision['delegation'] !== null
-            || ($decision['subject'] ?? null) !== $row->subject || ($decision['central_session_id'] ?? null) !== $row->sid
+            || ($decision['subject']) !== $row->subject || ($decision['central_session_id'] ?? null) !== $row->sid
             || ($decision['issuer'] ?? null) !== $this->config->issuer() || ($decision['application_id'] ?? null) !== $this->config->applicationId()
             || ($decision['client_id'] ?? null) !== $this->config->clientId() || ($decision['organization_id'] ?? null) !== ($row->selection['organizationId'] ?? null)
-            || ($decision['selected_role_id'] ?? null) !== ($row->selection['roleId'] ?? null) || (Contract::date($decision['expires_at'] ?? null) ?? 0) <= microtime(true)) {
+            || ($decision['selected_role_id'] ?? null) !== ($row->selection['roleId'] ?? null) || (Contract::date($decision['expires_at']) ?? 0) <= microtime(true)) {
             throw new IdentityException('ordinary_authority_expired', 409);
         }
     }

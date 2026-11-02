@@ -14,7 +14,6 @@ use IdentityPlatform\Laravel\Users\NativeOwner;
 use IdentityPlatform\Laravel\Users\NativeUserMapper;
 use IdentityPlatform\Laravel\Users\ProjectionOwnership;
 use Illuminate\Contracts\Auth\Authenticatable;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Throwable;
 
@@ -22,14 +21,17 @@ class UserImportBootstrap
 {
     public function __construct(private ConsumerGraph $graph, private IdentityConfig $config, private UserProjectionRepository $projections, private UserSnapshotRepository $snapshots, private NativeUserMapper $mapper) {}
 
-    /** @param list<array{sourceUserId: string, nativeUserId: int|string}> $associations */
+    /**
+     * @param  array<array-key, mixed>  $associations
+     * @return list<string>
+     */
     public function associate(UserImportResult $result, array $associations): array
     {
         app(ExecutionPolicy::class)->assertOutboundAllowed();
         Contract::require($result->bindingHash === $this->config->bindingHash() && $result->issuer === $this->config->issuer()
             && $result->clientId === $this->config->clientId() && $result->applicationId === $this->config->applicationId(), 'user_import_binding_changed', 409);
         $model = $this->config->value('users.model');
-        Contract::require(is_string($model) && is_subclass_of($model, Model::class) && is_subclass_of($model, Authenticatable::class), 'user_import_association_invalid', 422);
+        Contract::require($model !== null, 'user_import_association_invalid', 422);
         $connection = (new IdentityUserLink)->getConnection();
         Contract::require((new $model)->getConnection()->getName() === $connection->getName(), 'identity_user_connection_mismatch', 503);
         Contract::require(array_is_list($associations) && count($associations) === count($result->mappings), 'user_import_association_invalid', 422);
@@ -57,24 +59,25 @@ class UserImportBootstrap
                 $users = [];
                 foreach ($ordered as $source => $id) {
                     $user = $model::query()->whereKey($id)->lockForUpdate()->first();
-                    Contract::require($user !== null && (string) $user->getKey() === $id, 'user_import_association_invalid', 409);
+                    Contract::require($user instanceof Authenticatable && (is_string($user->getKey()) || is_int($user->getKey())) && (string) $user->getKey() === $id, 'user_import_association_invalid', 409);
                     $users[$source] = $user;
                 }
                 $results = [];
                 foreach ($result->mappings as $mapping) {
                     $snapshot = $mapping->snapshot;
                     $user = $users[$mapping->sourceUserId];
+                    $nativeId = $ids[$mapping->sourceUserId];
                     $ownerKey = NativeOwner::key($user);
                     $importId = hash('sha256', $result->bindingHash."\0".$mapping->sourceUserId);
                     $import = UserImportLink::query()->whereKey($importId)->lockForUpdate()->first();
                     Contract::require(! $import || ($import->source_user_id === $mapping->sourceUserId && $import->issuer === $snapshot->issuer && $import->subject === $snapshot->subject && $import->owner_key === $ownerKey), 'user_import_association_conflict', 409);
                     [$projection] = $this->projections->synchronize($snapshot->issuer, $snapshot->subject, []);
                     $link = IdentityUserLink::query()->where('binding_hash', $result->bindingHash)->where('projection_id', $projection->id)->lockForUpdate()->first();
-                    Contract::require(! $link || ($link->user_type === $model && $link->user_id === (string) $user->getKey() && $link->owner_key === $ownerKey), 'user_import_association_conflict', 409);
+                    Contract::require(! $link || ($link->user_type === $model && $link->user_id === $nativeId && $link->owner_key === $ownerKey), 'user_import_association_conflict', 409);
                     $this->graph->make(ProjectionOwnership::class)->native($user, $projection);
                     if (! $link) {
                         IdentityUserLink::query()->create(['id' => hash('sha256', $result->bindingHash."\0".$projection->id), 'binding_hash' => $result->bindingHash, 'projection_id' => $projection->id,
-                            'user_type' => $model, 'user_id' => (string) $user->getKey(), 'owner_key' => $ownerKey]);
+                            'user_type' => $model, 'user_id' => $nativeId, 'owner_key' => $ownerKey]);
                     }
                     if (! $import) {
                         UserImportLink::query()->create(['id' => $importId, 'binding_hash' => $result->bindingHash, 'source_user_id' => $mapping->sourceUserId, 'issuer' => $snapshot->issuer,

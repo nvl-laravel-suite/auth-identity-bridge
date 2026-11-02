@@ -22,7 +22,11 @@ final class ManagedContract
 
     public const METADATA = ['adminNotes', 'tags'];
 
-    /** Check JSON kinds before PHP associative arrays erase object/list distinctions. */
+    /**
+     * Check JSON kinds before PHP associative arrays erase object/list distinctions.
+     *
+     * @return array<array-key, mixed>
+     */
     public static function jsonData(string $operation, \stdClass $data): array
     {
         if (in_array($operation, self::READS, true)) {
@@ -40,13 +44,17 @@ final class ManagedContract
             self::response(($data->data ?? null) instanceof \stdClass);
             self::response(is_array($data->data->changedFields ?? null));
         }
-        $convert = function ($value) use (&$convert) {
+        $convert = function (mixed $value) use (&$convert): mixed {
             return is_array($value) || $value instanceof \stdClass ? array_map($convert, (array) $value) : $value;
         };
 
-        return $convert($data);
+        return array_map($convert, get_object_vars($data));
     }
 
+    /**
+     * @param  array<array-key, mixed>  $input
+     * @return array<array-key, mixed>
+     */
     public static function input(string $operation, array $input): array
     {
         $write = in_array($operation, self::WRITES, true);
@@ -70,6 +78,11 @@ final class ManagedContract
         return $input;
     }
 
+    /**
+     * @param  array<array-key, mixed>  $data
+     * @param  array<array-key, mixed>  $input
+     * @return array{id: non-empty-string, version: positive-int, fields: array<array-key, mixed>, writableFields: list<non-empty-string>}
+     */
     public static function read(string $operation, array $data, array $input): array
     {
         try {
@@ -84,6 +97,11 @@ final class ManagedContract
         }
     }
 
+    /**
+     * @param  array<array-key, mixed>  $data
+     * @param  array<array-key, mixed>|null  $input
+     * @return array<array-key, mixed>
+     */
     public static function receipt(string $operation, array $data, ?array $input = null): array
     {
         self::response(Contract::keys($data, ['id', 'version', 'operation', 'idempotencyKey', 'changedFields']) && in_array($operation, self::WRITES, true)
@@ -91,15 +109,23 @@ final class ManagedContract
         $fields = $data['changedFields'];
         self::response(self::fieldNames($operation, $fields));
         if ($input !== null) {
-            $expected = $input['changedFields'] ?? array_keys($input['changes'] ?? []);
+            $changes = $input['changes'] ?? [];
+            self::response(is_array($changes));
+            $expected = $input['changedFields'] ?? array_keys($changes);
+            self::response(Contract::strings($expected) && is_int($input['expectedVersion'] ?? null));
             sort($expected, SORT_STRING);
             self::response($data['id'] === ($input['userId'] ?? null) && $data['idempotencyKey'] === ($input['idempotencyKey'] ?? null)
-                && $data['version'] === ($input['expectedVersion'] ?? -1) + 1 && $fields === $expected);
+                && $data['version'] === $input['expectedVersion'] + 1 && $fields === $expected);
         }
 
         return $data;
     }
 
+    /**
+     * @param  array<array-key, mixed>  $data
+     * @param  array<array-key, mixed>  $reference
+     * @return array<array-key, mixed>|null
+     */
     public static function status(array $data, array $reference): ?array
     {
         self::response(Contract::keys($data, ['operation', 'status', 'data']) && $data['operation'] === $reference['operation'] && in_array($data['status'], ['pending', 'completed'], true));
@@ -110,39 +136,51 @@ final class ManagedContract
         }
         self::response(is_array($data['data']));
 
+        self::response(is_string($reference['operation']));
+
         return self::receipt($reference['operation'], $data['data'], $reference);
     }
 
+    /** @phpstan-assert-if-true =non-empty-list<non-empty-string> $fields */
     public static function fieldNames(string $operation, mixed $fields): bool
     {
         if (! is_array($fields) || ! array_is_list($fields) || $fields === []) {
             return false;
         }
         $allowed = str_starts_with($operation, 'users.metadata.') ? self::METADATA : self::PROFILE;
-        foreach ($fields as $index => $field) {
-            if (! is_string($field) || ! in_array($field, $allowed, true) || ($index > 0 && strcmp($fields[$index - 1], $field) >= 0)) {
+        $previous = null;
+        foreach ($fields as $field) {
+            if (! is_string($field) || ! in_array($field, $allowed, true) || ($previous !== null && strcmp($previous, $field) >= 0)) {
                 return false;
             }
+            $previous = $field;
         }
 
         return true;
     }
 
+    /** @phpstan-assert-if-true =non-empty-string $value */
     public static function identifier(mixed $value): bool
     {
         return self::text($value, 128, 1);
     }
 
+    /** @phpstan-assert-if-true =non-empty-string $value */
     public static function key(mixed $value): bool
     {
         return is_string($value) && preg_match('/^[A-Za-z0-9_.:-]{1,128}$/D', $value) === 1;
     }
 
+    /** @phpstan-assert-if-true =positive-int $value */
     public static function version(mixed $value): bool
     {
         return is_int($value) && $value > 0 && $value <= 9007199254740991;
     }
 
+    /**
+     * @param  array<array-key, mixed>  $fields
+     * @return array<array-key, mixed>
+     */
     private static function fields(string $operation, array $fields, bool $write): array
     {
         $metadata = str_starts_with($operation, 'users.metadata.');
@@ -161,18 +199,23 @@ final class ManagedContract
                 self::require(in_array($value, ['en', 'bg'], true));
             } elseif ($key === 'timezone') {
                 // Frozen from the shared Node schema's Intl.supportedValuesOf, not PHP aliases.
-                $zones = json_decode(file_get_contents(__DIR__.'/profile-timezones.json'), true, flags: JSON_THROW_ON_ERROR);
+                $source = file_get_contents(__DIR__.'/profile-timezones.json');
+                self::require(is_string($source));
+                $zones = json_decode($source, true, flags: JSON_THROW_ON_ERROR);
+                self::require(is_array($zones));
                 self::require(is_string($value) && in_array($value, $zones, true));
             } elseif ($key === 'tags') {
                 self::require(is_array($value) && array_is_list($value) && count($value) <= 50);
-                foreach ($value as &$tag) {
+                $tags = [];
+                foreach ($value as $tag) {
                     self::require(is_string($tag));
                     $tag = self::trim($tag);
                     self::require(self::text($tag, 64, 1));
+                    $tags[] = $tag;
                 }
-                unset($tag);
+                $value = $tags;
                 self::require(count(array_unique($value, SORT_STRING)) === count($value));
-                usort($value, fn ($a, $b) => strcmp(mb_convert_encoding($a, 'UTF-16BE', 'UTF-8'), mb_convert_encoding($b, 'UTF-16BE', 'UTF-8')));
+                usort($value, fn (string $a, string $b) => strcmp(mb_convert_encoding($a, 'UTF-16BE', 'UTF-8'), mb_convert_encoding($b, 'UTF-16BE', 'UTF-8')));
             } elseif ($key === 'socialLinks') {
                 if ($value === null) {
                     continue;
@@ -225,9 +268,10 @@ final class ManagedContract
     {
         self::require(mb_check_encoding($value, 'UTF-8'));
 
-        return preg_replace('/^[\x{0009}-\x{000D}\x{0020}\x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}]+|[\x{0009}-\x{000D}\x{0020}\x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}]+$/u', '', $value);
+        return preg_replace('/^[\x{0009}-\x{000D}\x{0020}\x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}]+|[\x{0009}-\x{000D}\x{0020}\x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}]+$/u', '', $value) ?? throw new IdentityException('validation_failed', 400);
     }
 
+    /** @phpstan-assert-if-true =string $value */
     private static function text(mixed $value, int $maximum, int $minimum = 0): bool
     {
         if (! is_string($value) || ! mb_check_encoding($value, 'UTF-8') || str_contains($value, "\0")) {
@@ -238,11 +282,13 @@ final class ManagedContract
         return $length >= $minimum && $length <= $maximum;
     }
 
+    /** @phpstan-assert true $condition */
     private static function require(bool $condition): void
     {
         Contract::require($condition, 'validation_failed', 400);
     }
 
+    /** @phpstan-assert true $condition */
     private static function response(bool $condition): void
     {
         Contract::require($condition, 'invalid_consumer_response', 502);

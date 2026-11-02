@@ -8,21 +8,25 @@ use Closure;
 use IdentityPlatform\Laravel\Exceptions\IdentityException;
 use IdentityPlatform\Laravel\Services\ResourceVerifier;
 use Illuminate\Http\Request;
+use Stringable;
+use Symfony\Component\HttpFoundation\Response;
 
 class ApiCredential
 {
     public function __construct(private ResourceVerifier $verifier) {}
 
-    public function handle(Request $request, Closure $next, string $kind, string $organizationParameter = '')
+    /** @param Closure(Request): Response $next */
+    public function handle(Request $request, Closure $next, string $kind, string $organizationParameter = ''): Response
     {
         try {
             $authorization = $request->header('Authorization', '');
-            if (! is_string($authorization) || ! preg_match('/^Bearer ([^\s,]{1,8192})$/D', $authorization, $matches)) {
+            if (! preg_match('/^Bearer ([^\s,]{1,8192})$/D', $authorization, $matches)) {
                 throw new IdentityException('credential_required', 401);
             }
             $organization = $organizationParameter !== '' ? $request->route($organizationParameter) : null;
             if (is_object($organization) && method_exists($organization, 'getKey')) {
-                $organization = (string) $organization->getKey();
+                $key = $organization->getKey();
+                $organization = is_scalar($key) || $key === null || $key instanceof Stringable ? (string) $key : null;
             }
             if ($organizationParameter !== '' && (! is_string($organization) || $organization === '')) {
                 throw new IdentityException('organization_required', 403);

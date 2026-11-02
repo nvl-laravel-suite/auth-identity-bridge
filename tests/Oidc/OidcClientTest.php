@@ -6,7 +6,9 @@ namespace IdentityPlatform\Laravel\Tests\Oidc;
 
 use IdentityPlatform\Laravel\Exceptions\IdentityException;
 use IdentityPlatform\Laravel\Oidc\OidcClient;
+use IdentityPlatform\Laravel\Oidc\TrustedProviderMetadata;
 use IdentityPlatform\Laravel\Tests\TestCase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\DataProvider;
 
@@ -140,6 +142,24 @@ final class OidcClientTest extends TestCase
         $refreshed = $this->app->make(OidcClient::class)->refresh($tokens);
         self::assertLessThanOrEqual($before + 300, $refreshed['expires_at']);
         self::assertGreaterThan($before + 290, $refreshed['expires_at']);
+    }
+
+    public function test_refresh_rejects_malformed_prior_claims_when_provider_omits_new_id_token(): void
+    {
+        $tokens = $this->exchange();
+        $tokens['claims']['exp'] = 'not-an-integer-deadline';
+        $this->provider->omitRefreshIdToken = true;
+
+        $this->expectExceptionObject(new IdentityException('oidc_token_invalid', 401));
+        $this->app->make(OidcClient::class)->refresh($tokens);
+    }
+
+    public function test_cached_jwks_rejects_scalar_key_entries_before_library_consumption(): void
+    {
+        Cache::store('identity_tests')->put('identity-oidc:'.hash('sha256', ProviderFixture::ISSUER).':jwks', ['keys' => ['invalid-key']], 300);
+
+        $this->expectExceptionObject(new IdentityException('oidc_keys_invalid', 502));
+        $this->app->make(TrustedProviderMetadata::class)->getJwks();
     }
 
     #[DataProvider('invalidEdDsaHashes')]

@@ -11,8 +11,10 @@ use LogicException;
 /** Process-safe registry. Selection is always explicit and never retained. */
 final readonly class ConsumerRegistry implements JsonSerializable
 {
+    /** @var array<string, ConsumerContext> */
     private array $consumers;
 
+    /** @var array<string, ConsumerContext> */
     private array $bindings;
 
     private ServiceTargetRegistry $serviceTargets;
@@ -24,6 +26,11 @@ final readonly class ConsumerRegistry implements JsonSerializable
     /**
      * The host explicitly supplies its effective default/known connections and vetted
      * shared, renewable lock stores. No mutable framework repository is retained.
+     *
+     * @param  array<array-key, mixed>  $configuration
+     * @param  list<string>  $connections
+     * @param  list<string>  $sharedLockStores
+     * @param  list<string>  $cacheStores
      */
     public function __construct(#[\SensitiveParameter] array $configuration, string $defaultConnection, array $connections, array $sharedLockStores, array $cacheStores)
     {
@@ -87,7 +94,12 @@ final readonly class ConsumerRegistry implements JsonSerializable
         $authority = ContextDefinition::originKey($origin);
         $path = self::requestPath($path);
         foreach ($this->consumers as $context) {
-            if ($context->hasBrowser() && $context->value('routes.enabled') && ContextDefinition::originKey($context->appOrigin()) === $authority && ContextDefinition::withinPath($path, $context->value('routes.path_prefix'))) {
+            if (! $context->hasBrowser() || $context->value('routes.enabled') !== true || ContextDefinition::originKey($context->appOrigin()) !== $authority) {
+                continue;
+            }
+            $prefix = $context->value('routes.path_prefix');
+            ContextDefinition::require($prefix !== null, 'unknown_consumer_route');
+            if (ContextDefinition::withinPath($path, $prefix)) {
                 return $context;
             }
         }
@@ -109,7 +121,10 @@ final readonly class ConsumerRegistry implements JsonSerializable
         $context = $this->get($consumer);
         ContextDefinition::require($context->hasBrowser(), 'browser_context_unavailable');
 
-        return $this->get($context->value('users.identity_projection_writer'));
+        $writer = $context->value('users.identity_projection_writer');
+        ContextDefinition::require($writer !== null, 'invalid_identity_projection_writer');
+
+        return $this->get($writer);
     }
 
     public function serviceTargets(): ServiceTargetRegistry
@@ -127,11 +142,13 @@ final readonly class ConsumerRegistry implements JsonSerializable
         return $this->connection;
     }
 
+    /** @return list<string> */
     public function names(): array
     {
         return array_keys($this->consumers);
     }
 
+    /** @param array<string, ConsumerContext> $consumers */
     private static function projectionWriters(array $consumers): void
     {
         $writers = [];
@@ -140,6 +157,7 @@ final readonly class ConsumerRegistry implements JsonSerializable
                 continue;
             }
             $writerName = $context->value('users.identity_projection_writer');
+            ContextDefinition::require($writerName !== null, 'invalid_identity_projection_writer');
             $writer = $consumers[$writerName] ?? null;
             ContextDefinition::require($writer !== null && $writer->hasBrowser() && $writer->issuer() === $context->issuer(), 'invalid_identity_projection_writer');
             ContextDefinition::require(! isset($writers[$context->issuer()]) || $writers[$context->issuer()] === $writerName, 'invalid_identity_projection_writer');
@@ -148,6 +166,7 @@ final readonly class ConsumerRegistry implements JsonSerializable
         }
     }
 
+    /** @param array<string, ConsumerContext> $consumers */
     private static function nativeGroups(array $consumers): void
     {
         foreach ($consumers as $context) {
@@ -157,8 +176,11 @@ final readonly class ConsumerRegistry implements JsonSerializable
             }
             $writer = $consumers[$group['writer']] ?? null;
             ContextDefinition::require($writer !== null && $writer->issuer() === $context->issuer() && $writer->value('users.native_group') === $group, 'invalid_native_projection_writer');
-            $native = new ($context->value('users.model'));
-            $other = new ($writer->value('users.model'));
+            $nativeClass = $context->value('users.model');
+            $otherClass = $writer->value('users.model');
+            ContextDefinition::require($nativeClass !== null && $otherClass !== null, 'invalid_native_projection_writer');
+            $native = new $nativeClass;
+            $other = new $otherClass;
             ContextDefinition::require($native->getTable() === $other->getTable() && $native->getConnectionName() === $other->getConnectionName(), 'invalid_native_projection_writer');
             foreach ($consumers as $peer) {
                 if ($peer->value('users.native_group.name') === $group['name']) {
@@ -181,6 +203,7 @@ final readonly class ConsumerRegistry implements JsonSerializable
         if (ContextDefinition::originKey($one->appOrigin()) === ContextDefinition::originKey($two->appOrigin())) {
             $firstPath = $one->value('routes.path_prefix');
             $secondPath = $two->value('routes.path_prefix');
+            ContextDefinition::require($firstPath !== null && $secondPath !== null, 'ambiguous_consumer_routes');
             ContextDefinition::require(! ContextDefinition::withinPath($firstPath, $secondPath) && ! ContextDefinition::withinPath($secondPath, $firstPath), 'ambiguous_consumer_routes');
         }
     }
@@ -200,6 +223,7 @@ final readonly class ConsumerRegistry implements JsonSerializable
         return $firstDomain === $secondDomain || str_ends_with($firstDomain, '.'.$secondDomain) || str_ends_with($secondDomain, '.'.$firstDomain);
     }
 
+    /** @return array{consumers: list<string>, service_targets: list<string>} */
     public function jsonSerialize(): array
     {
         return ['consumers' => $this->names(), 'service_targets' => $this->serviceTargets->names()];
@@ -215,6 +239,7 @@ final readonly class ConsumerRegistry implements JsonSerializable
         throw new LogicException('Consumer registries cannot be serialized.');
     }
 
+    /** @param array<array-key, mixed> $data */
     public function __unserialize(array $data): void
     {
         throw new LogicException('Consumer registries must be constructed from trusted definitions.');

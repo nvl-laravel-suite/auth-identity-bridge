@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IdentityPlatform\Laravel\Consumer;
 
 use IdentityPlatform\Laravel\Authorization\Contract;
+use IdentityPlatform\Laravel\Exceptions\IdentityException;
 use IdentityPlatform\Laravel\Models\IdentitySession;
 use IdentityPlatform\Laravel\Support\IdentityConfig;
 use IdentityPlatform\Laravel\Support\SharedProfile;
@@ -20,6 +21,10 @@ final class ConsumerContract
 
     private const MUTATIONS = [...ManagedContract::WRITES, 'profile.update', 'roles.save', 'access.save', 'invitations.create', 'invitations.revoke', 'invitations.resend', 'step-up.start'];
 
+    /**
+     * @param  array<array-key, mixed>  $data
+     * @param  array<array-key, mixed>  $input
+     */
     public static function validate(string $operation, array $data, array $input, IdentitySession $row, IdentityConfig $config): void
     {
         if (str_starts_with($operation, 'delegation.') && $operation !== 'delegation.options') {
@@ -29,6 +34,10 @@ final class ConsumerContract
         self::result($operation, $data, $input, $row, $config);
     }
 
+    /**
+     * @param  array<array-key, mixed>  $data
+     * @param  array<array-key, mixed>  $input
+     */
     private static function result(string $operation, array $data, array $input, IdentitySession $row, IdentityConfig $config, bool $retained = false): void
     {
         switch ($operation) {
@@ -164,10 +173,15 @@ final class ConsumerContract
 
                 return;
             default:
-                self::check(false);
+                throw new IdentityException('invalid_consumer_response', 502);
         }
     }
 
+    /**
+     * @param  array<array-key, mixed>  $data
+     *
+     * @phpstan-assert array{id: non-empty-string, name: string, email: non-empty-string, locale: 'en'|'bg', version: positive-int, ...} $data
+     */
     private static function profile(array $data, bool $exact = true): void
     {
         if ($exact) {
@@ -177,6 +191,7 @@ final class ConsumerContract
             && in_array($data['locale'] ?? null, ['en', 'bg'], true) && Contract::positive($data['version'] ?? null) && SharedProfile::valid($data));
     }
 
+    /** @param array<array-key, mixed> $data */
     private static function person(array $data, bool $exact = true): void
     {
         if ($exact) {
@@ -186,6 +201,10 @@ final class ConsumerContract
         self::check(is_bool($data['active'] ?? null) && in_array($data['status'] ?? null, ['active', 'revoked', 'pending_provisioning'], true) && Contract::positive($data['grantVersion'] ?? null));
     }
 
+    /**
+     * @param  array<array-key, mixed>  $data
+     * @param  array<array-key, mixed>  $input
+     */
     private static function page(array $data, array $input, callable $validate): void
     {
         self::keys($data, ['items', 'nextCursor']);
@@ -197,9 +216,11 @@ final class ConsumerContract
             $validate($item);
         }
         self::unique($data['items'], 'id');
-        self::check(Contract::nullableIdentifier($data['nextCursor']) && ($data['nextCursor'] === null || (count($data['items']) === (int) $limit && $data['nextCursor'] === $data['items'][array_key_last($data['items'])]['id'])));
+        $last = $data['items'][array_key_last($data['items'])] ?? null;
+        self::check(Contract::nullableIdentifier($data['nextCursor']) && ($data['nextCursor'] === null || (count($data['items']) === (int) $limit && is_array($last) && $data['nextCursor'] === ($last['id'] ?? null))));
     }
 
+    /** @param array<array-key, mixed> $data */
     private static function roleCatalog(array $data): void
     {
         self::keys($data, ['version', 'roles', 'permissions']);
@@ -223,6 +244,11 @@ final class ConsumerContract
         self::unique($data['roles'], 'key');
     }
 
+    /**
+     * @param  array<array-key, mixed>  $data
+     *
+     * @phpstan-assert array{id: non-empty-string, email: non-empty-string, version: positive-int, status: 'pending'|'accepted'|'revoked'|'expired', roles: list<array{id: non-empty-string, name: string}>, ...} $data
+     */
     private static function invitation(array $data, IdentitySession $row, IdentityConfig $config, bool $historical = false): void
     {
         self::keys($data, ['id', 'email', 'applicationId', 'applicationName', 'organizationId', 'organizationName', 'membershipRole', 'roles', 'metadata', 'version', 'status', 'createdAt', 'expiresAt']);
@@ -256,6 +282,7 @@ final class ConsumerContract
         return is_string($value) && in_array($value, self::PURPOSES, true);
     }
 
+    /** @param array<array-key, mixed> $input */
     private static function revision(int $version, array $input): void
     {
         self::check(is_int($input['expectedVersion'] ?? null) && $input['expectedVersion'] >= 0 && $version === $input['expectedVersion'] + 1);
@@ -268,6 +295,10 @@ final class ConsumerContract
         self::check($deadline !== null && ($historical || $deadline > $now) && $deadline <= $now + $maximum);
     }
 
+    /**
+     * @param  array<array-key, mixed>  $data
+     * @param  array<array-key, mixed>  $input
+     */
     private static function options(string $operation, array $data, array $input): void
     {
         $permissions = $operation === 'permissions.options.query';
@@ -302,42 +333,53 @@ final class ConsumerContract
         self::check($requested === $resolved);
     }
 
+    /** @phpstan-assert list<non-empty-string> $value */
     private static function strings(mixed $value, int $maximum, bool $permissions = false): void
     {
         self::check(Contract::strings($value, $permissions) && count($value) <= $maximum);
     }
 
+    /** @phpstan-assert list<mixed> $value */
     private static function list(mixed $value, int $maximum): void
     {
         self::check(is_array($value) && array_is_list($value) && count($value) <= $maximum);
     }
 
+    /** @param array<array-key, mixed> $items */
     private static function unique(array $items, string $column): void
     {
         $values = array_column($items, $column);
-        self::check(count($values) === count(array_unique($values)));
+        self::check(Contract::strings($values));
     }
 
+    /** @phpstan-assert-if-true =non-empty-string $value */
     private static function permission(mixed $value): bool
     {
         return is_string($value) && preg_match('/^[a-z][a-z0-9._:-]{1,127}$/D', $value) === 1;
     }
 
+    /** @phpstan-assert-if-true =non-empty-string $value */
     private static function email(mixed $value): bool
     {
         return is_string($value) && strlen($value) <= 254 && filter_var($value, FILTER_VALIDATE_EMAIL) !== false;
     }
 
+    /** @phpstan-assert-if-true =string $value */
     private static function text(mixed $value, int $maximum = 4096): bool
     {
         return is_string($value) && mb_check_encoding($value, 'UTF-8') && mb_strlen($value) <= $maximum && ! str_contains($value, "\0");
     }
 
+    /**
+     * @param  array<array-key, mixed>  $data
+     * @param  list<array-key>  $keys
+     */
     private static function keys(array $data, array $keys): void
     {
         self::check(Contract::keys($data, $keys));
     }
 
+    /** @phpstan-assert true $condition */
     private static function check(bool $condition): void
     {
         Contract::require($condition, 'invalid_consumer_response', 502);

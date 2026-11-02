@@ -30,7 +30,7 @@ final class ApplicationContextManager
         $row = $this->ordinary($request);
         $result = [];
         foreach ($this->provider($kind)->choices(ApplicationContextScope::from($this->config, $row)) as $resource) {
-            if (! $resource instanceof ApplicationContextResource || count($result) >= 100) {
+            if (count($result) >= 100) {
                 throw new IdentityException('application_context_invalid', 422);
             }
             $result[] = $this->descriptor($kind, $resource, $row);
@@ -43,7 +43,8 @@ final class ApplicationContextManager
     public function select(Request $request): ApplicationContextDescriptor
     {
         $this->commands->assert($request);
-        $data = $request->validate(['kind' => 'required|string|max:64', 'resourceId' => 'required|string|max:255']);
+        $request->validate(['kind' => 'required|string|max:64', 'resourceId' => 'required|string|max:255']);
+        $data = ['kind' => $request->string('kind')->toString(), 'resourceId' => $request->string('resourceId')->toString()];
         $row = $this->ordinary($request);
         $this->version($request, $row);
         $provider = $this->provider($data['kind']);
@@ -124,10 +125,10 @@ final class ApplicationContextManager
         $this->version($request, $row);
         $this->requireOrdinary($row);
         $proof = $principal->decision;
-        if (! array_key_exists('delegation', $proof) || $proof['delegation'] !== null || ($proof['subject'] ?? null) !== $row->subject || ($proof['central_session_id'] ?? null) !== $row->sid
+        if (! array_key_exists('delegation', $proof) || $proof['delegation'] !== null || $proof['subject'] !== $row->subject || ($proof['central_session_id'] ?? null) !== $row->sid
             || ($proof['issuer'] ?? null) !== $this->config->issuer() || ($proof['application_id'] ?? null) !== $this->config->applicationId() || ($proof['client_id'] ?? null) !== $this->config->clientId()
             || ($proof['organization_id'] ?? null) !== ($row->selection['organizationId'] ?? null) || ($proof['selected_role_id'] ?? null) !== ($row->selection['roleId'] ?? null)
-            || (Contract::date($proof['expires_at'] ?? null) ?? 0) <= microtime(true)) {
+            || (Contract::date($proof['expires_at']) ?? 0) <= microtime(true)) {
             throw new IdentityException('ordinary_authority_expired', 409);
         }
         $descriptor = $this->validated($row, true) ?? throw new IdentityException('application_context_unavailable', 403);
@@ -147,9 +148,9 @@ final class ApplicationContextManager
             return null;
         }
         $data = $stored['descriptor'] ?? null;
-        if (! is_array($data) || ! is_string($data['kind'] ?? null) || ! is_string($data['resourceId'] ?? null) || ! is_string($data['version'] ?? null)
+        if (! is_array($data) || ! is_string($data['kind'] ?? null) || ! is_string($data['resourceId'] ?? null) || ! is_string($data['version'] ?? null) || ! is_string($data['expiresAt'] ?? null)
             || ($data['consumerBinding'] ?? null) !== $scope->bindingHash || ($data['actorSubject'] ?? null) !== $scope->actorSubject || ($data['providerSelection'] ?? null) !== $this->selection($row)
-            || (Contract::date($data['expiresAt'] ?? null) ?? 0) <= (float) now()->format('U.u')) {
+            || (Contract::date($data['expiresAt']) ?? 0) <= (float) now()->format('U.u')) {
             return null;
         }
         try {
@@ -168,8 +169,11 @@ final class ApplicationContextManager
         return $expiry->isFuture() ? $this->view($data['kind'], $resource, $row, $expiry) : null;
     }
 
-    private function descriptor(string $kind, ApplicationContextResource $resource, IdentitySession $row): ApplicationContextDescriptor
+    private function descriptor(string $kind, mixed $resource, IdentitySession $row): ApplicationContextDescriptor
     {
+        if (! $resource instanceof ApplicationContextResource) {
+            throw new IdentityException('application_context_invalid', 422);
+        }
         $expiry = $resource->expiresAt->min(now()->addSeconds(300))->min($row->expires_at)->min($row->started_at->addSeconds((int) $this->config->value('local.absolute_seconds', 43200)));
         if (! $expiry->isFuture()) {
             throw new IdentityException('application_context_unavailable', 403);
@@ -183,6 +187,9 @@ final class ApplicationContextManager
         return new ApplicationContextDescriptor($kind, $resource->resourceId, $resource->label, $this->config->bindingHash(), $row->subject, $this->selection($row), $resource->localVersion, $expiry);
     }
 
+    /**
+     * @return array{organizationId: string|null, roleId: string|null}
+     */
     private function selection(IdentitySession $row): array
     {
         return ['organizationId' => $row->selection['organizationId'] ?? null, 'roleId' => $row->selection['roleId'] ?? null];
@@ -190,7 +197,12 @@ final class ApplicationContextManager
 
     private function provider(string $kind): ApplicationContextProvider
     {
-        return $this->graph->make($this->registry->provider($this->config->context()->name(), $kind));
+        $provider = $this->graph->make($this->registry->provider($this->config->context()->name(), $kind));
+        if (! $provider instanceof ApplicationContextProvider) {
+            throw new IdentityException('application_context_registration_invalid');
+        }
+
+        return $provider;
     }
 
     private function ordinary(Request $request): IdentitySession
@@ -229,6 +241,9 @@ final class ApplicationContextManager
         $this->requireOrdinary($current);
     }
 
+    /**
+     * @param  array<string, mixed>|null  $context
+     */
     private function publish(IdentitySession $row, ?array $context): void
     {
         if (! $this->rows->publish($row, ['application_context' => $context, 'context_version' => $row->context_version + 1])) {

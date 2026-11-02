@@ -71,7 +71,8 @@
             "/tests",
             "/vendor",
             "/.temp",
-            "/phpstan.neon*"
+            "/phpstan.neon*",
+            "/stubs"
         ]
     },
     "homepage": "https://github.com/nvl-laravel-suite/auth-identity-bridge",

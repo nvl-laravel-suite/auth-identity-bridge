@@ -18,11 +18,21 @@ use Throwable;
 
 /** A synchronous app mutation and its immutable audit/outbox share the consumer connection.
  * @api
+ *
+ * @phpstan-import-type DecisionData from DelegationDecision
+ *
+ * @phpstan-type AdmissionReceipt array{receiptId: non-empty-string, delegationId: non-empty-string, contextVersion: int, operation: string, organizationId: string|null, resourceType: string, resourceId: string, commandDigest: string, idempotencyKey: string, admittedAt: string, expiresAt: string, reportingCapability: string, reportingExpiresAt: string, decision: DecisionData}
  */
 class DelegatedActionRunner
 {
     public function __construct(private DelegationManager $delegations, private SessionManager $sessions, private OverlayRepository $overlays, private DelegatedActionRepository $actions, private ConsumerClient $client, private IdentityVault $vault, private IdentityConfig $config) {}
 
+    /**
+     * @param  array<array-key, mixed>  $command
+     * @param  Closure(): mixed  $lockResource
+     * @param  Closure(mixed): mixed  $mutate
+     * @return array<array-key, mixed>
+     */
     public function run(Request $request, string $operation, string $resourceType, string $resourceId, array $command, string $idempotencyKey, Closure $lockResource, Closure $mutate): array
     {
         $registration = $this->delegations->registration($operation);
@@ -37,7 +47,7 @@ class DelegatedActionRunner
         }
         $admissionStarted = hrtime(true);
         $receipt = $this->client->call($request, 'delegation.admit', [...$this->delegations->proof($overlay), 'operation' => $operation, 'organizationId' => $decision->data['organizationId'], 'resourceType' => $resourceType, 'resourceId' => $resourceId, 'commandDigest' => $digest, 'idempotencyKey' => $idempotencyKey]);
-        $this->validateReceipt($receipt, $row, $overlay, $operation, $resourceType, $resourceId, $digest, $idempotencyKey);
+        $receipt = $this->validateReceipt($receipt, $row, $overlay, $operation, $resourceType, $resourceId, $digest, $idempotencyKey);
         $admissionDeadline = $admissionStarted + (int) floor((Contract::date($receipt['expiresAt']) - Contract::date($receipt['admittedAt'])) * 1_000_000_000);
         $audit = ['actor_id' => $decision->data['actor']['id'], 'actor_name' => $decision->data['actor']['name'], 'subject_id' => $decision->data['subject']['id'], 'subject_name' => $decision->data['subject']['name'], 'organization_id' => $decision->data['organizationId'], 'source_sid' => $row->sid, 'versions' => $decision->data['versions'], 'reason' => $decision->data['reason'], 'ticket_reference' => $decision->data['ticketReference'], 'admitted_at' => $receipt['admittedAt'], 'reporting_expires_at' => $receipt['reportingExpiresAt']];
         $values = ['id' => $id, 'session_id' => $row->id, 'delegation_id' => $decision->data['delegationId'], 'operation' => $operation, 'command_digest' => $digest,
@@ -54,7 +64,7 @@ class DelegatedActionRunner
                     throw new IdentityException('delegation_action_connection_mismatch', 503);
                 }
                 $locked = $this->overlays->find($row->id, true);
-                $this->delegations->assertCurrent($row, $locked, true);
+                $locked = $this->delegations->assertCurrent($row, $locked, true);
                 if ($locked->status !== 'active' || $locked->handle_vault !== $overlay->handle_vault || $locked->expires_at->isPast()) {
                     throw new IdentityException('delegation_unavailable', 403);
                 }
@@ -84,17 +94,29 @@ class DelegatedActionRunner
         return $result;
     }
 
-    private function validateReceipt(array $receipt, IdentitySession $row, IdentityDelegation $overlay, string $operation, string $resourceType, string $resourceId, string $digest, string $idempotencyKey): void
+    /**
+     * @param  array<array-key, mixed>  $receipt
+     * @return AdmissionReceipt
+     */
+    private function validateReceipt(array $receipt, IdentitySession $row, IdentityDelegation $overlay, string $operation, string $resourceType, string $resourceId, string $digest, string $idempotencyKey): array
     {
+        $expectedDecision = $overlay->decision;
+        Contract::require(is_array($expectedDecision) && isset($expectedDecision['delegationId']), 'invalid_delegation_admission', 502);
         $required = ['receiptId', 'delegationId', 'contextVersion', 'operation', 'organizationId', 'resourceType', 'resourceId', 'commandDigest', 'idempotencyKey', 'admittedAt', 'expiresAt', 'reportingCapability', 'reportingExpiresAt', 'decision'];
-        Contract::require(Contract::keys($receipt, $required) && Contract::identifier($receipt['receiptId']) && $receipt['delegationId'] === $overlay->decision['delegationId'] && $receipt['contextVersion'] === $row->context_version && $receipt['operation'] === $operation && $receipt['organizationId'] === $overlay->decision['organizationId'] && $receipt['resourceType'] === $resourceType && $receipt['resourceId'] === $resourceId && $receipt['commandDigest'] === $digest && $receipt['idempotencyKey'] === $idempotencyKey && is_string($receipt['reportingCapability']) && preg_match('/^[A-Za-z0-9._~-]{32,512}$/D', $receipt['reportingCapability']) === 1 && is_array($receipt['decision']), 'invalid_delegation_admission', 502);
+        Contract::require(Contract::keys($receipt, $required) && Contract::identifier($receipt['receiptId']) && $receipt['delegationId'] === $expectedDecision['delegationId'] && $receipt['contextVersion'] === $row->context_version && $receipt['operation'] === $operation && $receipt['organizationId'] === $expectedDecision['organizationId'] && $receipt['resourceType'] === $resourceType && $receipt['resourceId'] === $resourceId && $receipt['commandDigest'] === $digest && $receipt['idempotencyKey'] === $idempotencyKey && is_string($receipt['reportingCapability']) && preg_match('/^[A-Za-z0-9._~-]{32,512}$/D', $receipt['reportingCapability']) === 1 && is_array($receipt['decision']), 'invalid_delegation_admission', 502);
         $decision = DelegationDecision::validate($receipt['decision'], $row, $overlay, $this->config);
+        Contract::require(is_string($receipt['admittedAt']) && is_string($receipt['expiresAt']) && is_string($receipt['reportingExpiresAt']), 'invalid_delegation_admission', 502);
         $admitted = Contract::date($receipt['admittedAt']);
         $end = Contract::date($receipt['expiresAt']);
         $reportEnd = Contract::date($receipt['reportingExpiresAt']);
         Contract::require($admitted !== null && $end !== null && $reportEnd !== null && $admitted <= microtime(true) + 0.1 && microtime(true) - $admitted <= 5 && $end > microtime(true) && $end - $admitted <= 5 && $end <= Contract::date($decision->data['expiresAt']) && $reportEnd > microtime(true) && $reportEnd - $admitted <= 7 * 86400 && in_array($operation, $decision->data['operations'], true), 'invalid_delegation_admission', 502);
+
+        return ['receiptId' => $receipt['receiptId'], 'delegationId' => $receipt['delegationId'], 'contextVersion' => $receipt['contextVersion'], 'operation' => $receipt['operation'], 'organizationId' => $receipt['organizationId'], 'resourceType' => $receipt['resourceType'], 'resourceId' => $receipt['resourceId'], 'commandDigest' => $receipt['commandDigest'], 'idempotencyKey' => $receipt['idempotencyKey'], 'admittedAt' => $receipt['admittedAt'], 'expiresAt' => $receipt['expiresAt'], 'reportingCapability' => $receipt['reportingCapability'], 'reportingExpiresAt' => $receipt['reportingExpiresAt'], 'decision' => $decision->data];
     }
 
+    /**
+     * @param  AdmissionReceipt  $receipt
+     */
     private function requireAdmissionLive(array $receipt, int $admissionDeadline): void
     {
         $verified = Contract::date($receipt['decision']['actor']['assurance']['verifiedAt']);
@@ -104,6 +126,9 @@ class DelegatedActionRunner
         }
     }
 
+    /**
+     * @return array<array-key, mixed>
+     */
     private function replay(IdentityDelegatedAction $action, string $digest): array
     {
         if (! hash_equals($action->command_digest, $digest)) {
@@ -113,7 +138,12 @@ class DelegatedActionRunner
             throw new IdentityException('delegation_operation_rejected', 409);
         }
 
-        return $action->result;
+        $result = $action->result;
+        if (! is_array($result)) {
+            throw new IdentityException('delegation_result_invalid', 500);
+        }
+
+        return $result;
     }
 
     private function canonical(mixed $value): mixed

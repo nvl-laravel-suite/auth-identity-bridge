@@ -28,10 +28,12 @@ class LocalSessionDirectory
         $request = $this->graph->make(Request::class);
         $current = $request->hasSession() ? $request->session()->get('identity.session') : null;
 
-        return $this->owned($owner)->where('expires_at', '>', now())->where('started_at', '>', now()->subSeconds((int) $this->config->value('local.absolute_seconds', 43200)))->where('last_activity_at', '>', now()->subSeconds((int) $this->config->value('local.idle_seconds', 1800)))->orderByDesc('last_activity_at')->get()->map(fn ($row) => [
+        $rows = $this->owned($owner)->where('expires_at', '>', now())->where('started_at', '>', now()->subSeconds((int) $this->config->value('local.absolute_seconds', 43200)))->where('last_activity_at', '>', now()->subSeconds((int) $this->config->value('local.idle_seconds', 1800)))->orderByDesc('last_activity_at')->get()->map(fn (IdentitySession $row) => [
             'id' => $row->id, 'started_at' => $row->started_at->toIso8601String(), 'last_activity_at' => $row->last_activity_at->toIso8601String(),
             'expires_at' => $row->expires_at->toIso8601String(), 'current' => $row->id === $current,
         ])->all();
+
+        return array_values($rows);
     }
 
     public function revoke(Authenticatable $owner, string $sessionId): bool
@@ -52,6 +54,9 @@ class LocalSessionDirectory
         return $this->owned($owner)->whereKey($sessionId)->lockForUpdate()->first();
     }
 
+    /**
+     * @return Builder<IdentitySession>
+     */
     private function owned(Authenticatable $owner): Builder
     {
         $key = NativeOwner::key($owner);

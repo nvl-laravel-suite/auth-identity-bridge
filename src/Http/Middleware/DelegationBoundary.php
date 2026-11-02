@@ -9,6 +9,7 @@ use IdentityPlatform\Laravel\Delegation\DelegationManager;
 use IdentityPlatform\Laravel\Exceptions\IdentityException;
 use IdentityPlatform\Laravel\Support\IdentityConfig;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 /** Installed on web before host authentication/policies; every unregistered route fails closed. */
 class DelegationBoundary
@@ -17,6 +18,9 @@ class DelegationBoundary
 
     public function __construct(private DelegationManager $delegations, private IdentityConfig $config) {}
 
+    /**
+     * @param  Closure(Request): Response  $next
+     */
     public function handle(Request $request, Closure $next): mixed
     {
         $overlay = $this->delegations->current($request);

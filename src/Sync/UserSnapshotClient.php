@@ -14,13 +14,18 @@ class UserSnapshotClient
 {
     public function __construct(private IdentityConfig $config, private IdentityHttp $http) {}
 
+    /** @param array<array-key, mixed> $subjects */
     public function read(array $subjects): UserSnapshotBatch
     {
         $this->enabled();
-        Contract::require(array_is_list($subjects) && count($subjects) > 0 && count($subjects) <= 100 && count(array_unique($subjects)) === count($subjects), 'user_sync_subjects_invalid', 422);
+        Contract::require(array_is_list($subjects) && count($subjects) > 0 && count($subjects) <= 100, 'user_sync_subjects_invalid', 422);
+        $validatedSubjects = [];
         foreach ($subjects as $subject) {
             Contract::require(Contract::identifier($subject), 'user_sync_subjects_invalid', 422);
+            $validatedSubjects[] = $subject;
         }
+
+        Contract::require(count(array_unique($validatedSubjects)) === count($subjects), 'user_sync_subjects_invalid', 422);
 
         return UserSnapshotBatch::validate($this->http->sync('profiles.read', ['subjects' => $subjects]), $this->config, $subjects);
     }

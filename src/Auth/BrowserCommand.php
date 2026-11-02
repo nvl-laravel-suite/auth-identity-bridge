@@ -19,7 +19,7 @@ final class BrowserCommand
             throw new IdentityException('origin_refused', 403);
         }
         $token = $request->input('_token', $request->header('X-CSRF-TOKEN'));
-        if (! $request->hasSession() || ! is_string($token) || ! is_string($request->session()->token()) || ! hash_equals($request->session()->token(), $token)) {
+        if (! $request->hasSession() || ! is_string($token) || ! hash_equals($request->session()->token(), $token)) {
             throw new IdentityException('csrf_refused', 419);
         }
     }

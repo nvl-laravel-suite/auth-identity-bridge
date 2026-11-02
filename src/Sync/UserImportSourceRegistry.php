@@ -12,6 +12,7 @@ use IdentityPlatform\Laravel\Support\ConsumerGraph;
  */
 final class UserImportSourceRegistry
 {
+    /** @var array<string, class-string<UserImportSource>> */
     private array $sources = [];
 
     public function register(string $name, string $class): void
@@ -23,7 +24,9 @@ final class UserImportSourceRegistry
     public function resolve(string $name, ConsumerGraph $graph): UserImportSource
     {
         Contract::require(isset($this->sources[$name]), 'user_import_source_unknown', 422);
+        $source = $graph->make($this->sources[$name]);
+        Contract::require($source instanceof UserImportSource, 'user_import_source_invalid', 422);
 
-        return $graph->make($this->sources[$name]);
+        return $source;
     }
 }

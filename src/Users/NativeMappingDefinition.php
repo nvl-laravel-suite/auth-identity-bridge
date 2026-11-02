@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IdentityPlatform\Laravel\Users;
 
 use IdentityPlatform\Laravel\Authorization\Contract;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Model;
 
 /** One schema for direct and transformed fields; omitted sources never become null. */
@@ -12,8 +13,10 @@ final readonly class NativeMappingDefinition
 {
     public const SOURCES = ['name', 'email', 'picture', 'state', 'emailVerified', 'email_verified_at', 'locale', 'timezone', 'accountType', 'phone', 'organizationName', 'position', 'bio', 'dateOfBirth', 'gender', 'country', 'socialLinks', 'profileCompleted', 'adminNotes', 'tags', 'lastLoginAt'];
 
+    /** @var array<string, array{column: string, transform: class-string<NativeValueTransform>|null, cast: string|null, options: array<array-key, mixed>}> */
     public array $fields;
 
+    /** @param array{fields: array<array-key, mixed>, protected_fields?: list<string>, local_fields?: list<string>, readonly_fields?: list<string>, native_group?: array{name: string, writer: string, epoch: int}|null} $users */
     public function __construct(array $users, ?Model $model)
     {
         $fields = [];
@@ -21,6 +24,7 @@ final readonly class NativeMappingDefinition
         $protected = array_merge(['id', 'password', 'password_hash', 'remember_token', 'roles', 'permissions', 'is_admin', 'security', 'owner_id', 'user_id', 'created_at', 'updated_at', 'deleted_at'], $users['protected_fields'] ?? [], $users['local_fields'] ?? [], $users['readonly_fields'] ?? []);
         if ($model) {
             $protected[] = $model->getKeyName();
+            Contract::require($model instanceof Authenticatable, 'identity_user_mapping_invalid', 503);
             $protected[] = $model->getAuthIdentifierName();
             $protected[] = $model->getAuthPasswordName();
             $protected[] = $model->getRememberTokenName();
@@ -46,7 +50,7 @@ final readonly class NativeMappingDefinition
             if ($model !== null) {
                 Contract::require(! ($model->hasGetMutator($column) && ! $model->hasSetMutator($column)) && ! ($model->hasAttributeGetMutator($column) && ! $model->hasAttributeSetMutator($column)), 'identity_user_mapping_invalid', 503);
             }
-            $fields[$source] = $entry;
+            $fields[$source] = ['column' => $column, 'transform' => $entry['transform'], 'cast' => $entry['cast'], 'options' => $entry['options']];
             $destinations[] = $column;
         }
         Contract::require(! isset($fields['email_verified_at']) || isset($fields['email']), 'identity_user_mapping_invalid', 503);
@@ -54,12 +58,18 @@ final readonly class NativeMappingDefinition
         $this->fields = $fields;
     }
 
-    /** Mandatory authority rules are additive to host ownership declarations, never overridable. */
+    /** Mandatory authority rules are additive to host ownership declarations, never overridable.
+     *
+     * @param  array{native_group?: array{name: string, writer: string, epoch: int}|null, ...}  $users
+     */
     private static function destination(string $source, string $column, array $users): void
     {
         // Normalize conventional snake_case, camelCase and acronym spellings only for classification.
         $name = preg_replace('/([A-Z]+)([A-Z][a-z])/', '$1_$2', $column);
-        $name = strtolower(preg_replace('/([a-z0-9])([A-Z])/', '$1_$2', $name));
+        Contract::require(is_string($name), 'identity_user_mapping_invalid', 503);
+        $name = preg_replace('/([a-z0-9])([A-Z])/', '$1_$2', $name);
+        Contract::require(is_string($name), 'identity_user_mapping_invalid', 503);
+        $name = strtolower($name);
         $authority = '/(?:^|_)(?:roles?|permissions?|privileges?|privileged|admin|administrator|superadmin|superuser|sudo|mfa|otp|totp|two_factor|twofactor|security|credentials?|passwords?|passkeys?|auth|authentication|authorization)(?:_|$)/';
         // The contract's operator-note field is governance data, not an administrator privilege.
         $governanceNotes = $source === 'adminNotes' && $name === 'admin_notes' && ($users['native_group'] ?? null) === null;
@@ -70,6 +80,10 @@ final readonly class NativeMappingDefinition
         }
     }
 
+    /**
+     * @param  array<array-key, mixed>  $facts
+     * @return array<string, mixed>
+     */
     public function values(array $facts, Model $model): array
     {
         $values = [];

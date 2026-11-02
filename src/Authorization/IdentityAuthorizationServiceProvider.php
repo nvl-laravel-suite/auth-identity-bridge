@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace IdentityPlatform\Laravel\Authorization;
 
+use Illuminate\Auth\AuthManager;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Auth\Access\Gate as GateContract;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -14,8 +16,8 @@ final class IdentityAuthorizationServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singletonIf(AbilityRegistry::class);
-        $this->app->extend(GateContract::class, fn (GateContract $gate, $app) => new IdentityGate(
-            $app, $gate, $app->make(AbilityRegistry::class), fn () => ($app['auth']->userResolver())()
+        $this->app->extend(GateContract::class, fn (GateContract $gate, Container $app) => new IdentityGate(
+            $app, $gate, $app->make(AbilityRegistry::class), fn () => ($app->make(AuthManager::class)->userResolver())()
         ));
         Gate::clearResolvedInstance(GateContract::class);
     }

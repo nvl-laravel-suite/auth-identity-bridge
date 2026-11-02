@@ -8,6 +8,8 @@ use IdentityPlatform\Laravel\Authorization\Contract;
 use IdentityPlatform\Laravel\Exceptions\IdentityException;
 use IdentityPlatform\Laravel\Support\ExecutionPolicy;
 use IdentityPlatform\Laravel\Support\IdentityConfig;
+use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
 
@@ -60,11 +62,14 @@ class UserSyncManager
         }
     }
 
+    /** @return array{imported: int, associated: int, unresolvedImports: int, applied: int, stale: int, failed: int, profiles: int, known: int, missing: int, nativePending: int, nextCursor: string|null, knownCursor: string|null, pending: int, completed: bool} */
     public function reconcile(int $limit = 100): array
     {
         $this->enabled();
         Contract::require($limit >= 1 && $limit <= 100, 'user_sync_limit_invalid', 422);
-        $lock = Cache::store($this->config->value('lock_store'))->lock('identity-user-sync:'.$this->config->bindingHash(), 60);
+        $store = Cache::store($this->config->value('lock_store'))->getStore();
+        Contract::require($store instanceof LockProvider, 'user_sync_busy', 409);
+        $lock = $store->lock('identity-user-sync:'.$this->config->bindingHash(), 60);
         if (! $lock->get()) {
             throw new IdentityException('user_sync_busy', 409);
         }
@@ -142,7 +147,8 @@ class UserSyncManager
                 $policyVersion = $batch->policyVersion;
                 $cyclePolicyVersion ??= $policyVersion;
             }
-            $knownCursor = $moreKnown ? end($known)->subject : null;
+            $lastKnown = $known === [] ? null : $known[array_key_last($known)];
+            $knownCursor = $moreKnown && $lastKnown !== null ? $lastKnown->subject : null;
             $pending = $this->work->pendingCount();
             $nativePending = $this->snapshots->nativePending();
             $importCounts = $this->imports->bindingCounts();
@@ -173,10 +179,10 @@ class UserSyncManager
         }
     }
 
-    private function requireLease(object $lock): void
+    private function requireLease(Lock $lock): void
     {
         try {
-            if ($lock->refresh(60)) {
+            if (method_exists($lock, 'refresh') && $lock->refresh(60)) {
                 return;
             }
         } catch (Throwable) {

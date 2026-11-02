@@ -20,23 +20,32 @@ use IdentityPlatform\Laravel\Support\IdentityHttp;
 use IdentityPlatform\Laravel\Support\IdentityVault;
 use IdentityPlatform\Laravel\Support\SafeReturn;
 use IdentityPlatform\Laravel\Sync\UserSynchronizer;
+use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
 
+/**
+ * @phpstan-import-type ContextOption from AuthorizationClient
+ * @phpstan-import-type Selection from AuthorizationClient
+ */
 class SessionManager
 {
     public function __construct(private IdentityConfig $config, private IdentityVault $vault, private LoginRepository $logins, private SessionRepository $sessions, private OidcClient $oidc, private AuthorizationClient $authorization, private UserSynchronizer $users, private IdentityHttp $http, private LifecycleNotifications $notifications) {}
 
     public function start(Request $request, mixed $returnPath = '/', bool $resource = false): string
     {
-        $intent = ['nonce' => bin2hex(random_bytes(32)), 'verifier' => rtrim(strtr(base64_encode(random_bytes(48)), '+/', '-_'), '='), 'resource' => $resource, 'return_path' => SafeReturn::path($returnPath), 'created_at' => now()->timestamp];
+        $intent = ['nonce' => bin2hex(random_bytes(32)), 'verifier' => rtrim(strtr(base64_encode(random_bytes(48)), '+/', '-_'), '='), 'resource' => $resource, 'return_path' => SafeReturn::path($returnPath), 'created_at' => now()->getTimestamp()];
         $state = $this->logins->create($request->session()->getId(), $intent, 'login');
 
         return $this->oidc->authorization($intent + ['state' => $state]);
     }
 
+    /**
+     * @param  array<array-key, mixed>  $callback
+     */
     public function complete(Request $request, array $callback): string
     {
         $callback = CallbackInput::validate($request, $callback);
@@ -61,9 +70,15 @@ class SessionManager
 
         $this->notifications->afterCommit($created->getConnection(), new AuthenticatedSessionEstablished($this->config->context()->name(), $created->subject, $created->context_version));
 
-        return parse_url($this->config->url('contexts'), PHP_URL_PATH);
+        $path = parse_url($this->config->url('contexts'), PHP_URL_PATH);
+        if (! is_string($path)) {
+            throw new IdentityException('invalid_identity_configuration');
+        }
+
+        return $path;
     }
 
+    /** @phpstan-impure Refreshes, touches or retires the persisted browser session. */
     public function current(Request $request): ?IdentitySession
     {
         $row = $this->resolveCurrent($request);
@@ -86,7 +101,11 @@ class SessionManager
             return null;
         }
         $tokens = $this->vault->open($row->token_vault, 'session:'.$row->id);
-        if (($tokens['expires_at'] ?? 0) <= now()->timestamp + 15) {
+        $expiresAt = $tokens['expires_at'] ?? 0;
+        if (! is_int($expiresAt)) {
+            throw new IdentityException('vault_binding_failed', 401);
+        }
+        if ($expiresAt <= now()->getTimestamp() + 15) {
             if ($row->getConnection()->transactionLevel() > 0) {
                 throw new IdentityException('refresh_required', 409);
             }
@@ -101,7 +120,11 @@ class SessionManager
                     return null;
                 }
                 $bundle = $this->vault->open($current->token_vault, 'session:'.$current->id);
-                if (($bundle['expires_at'] ?? 0) > now()->timestamp + 15) {
+                $expiresAt = $bundle['expires_at'] ?? 0;
+                if (! is_int($expiresAt)) {
+                    throw new IdentityException('vault_binding_failed', 401);
+                }
+                if ($expiresAt > now()->getTimestamp() + 15) {
                     if (! $this->sessions->publish($current, ['last_activity_at' => now()])) {
                         throw new IdentityException('session_changed', 409);
                     }
@@ -147,6 +170,7 @@ class SessionManager
         return $row;
     }
 
+    /** @return array{contract: 'platform-authorization-contexts.v1', issuer: string, subject: string, central_session_id: string, application_id: string, client_id: string, contexts: list<ContextOption>, issued_at: string, expires_at: string, local_context_version: int} */
     public function contexts(Request $request): array
     {
         $row = $this->requireSession($request);
@@ -157,6 +181,9 @@ class SessionManager
         return $result + ['local_context_version' => $row->context_version];
     }
 
+    /**
+     * @param  Selection  $selection
+     */
     public function select(Request $request, array $selection, int $version): void
     {
         $row = $this->requireSession($request);
@@ -167,7 +194,7 @@ class SessionManager
         $contexts = $this->authorization->contexts($tokens['access_token'], $row->subject, $row->sid);
         $found = false;
         foreach ($contexts['contexts'] as $choice) {
-            if (($choice['selection'] ?? null) == $selection) {
+            if ($choice['selection'] == $selection) {
                 $found = true;
                 break;
             }
@@ -190,10 +217,11 @@ class SessionManager
         if (($row->selection['selected'] ?? false) !== true) {
             throw new IdentityException('context_required', 409);
         }
-        if (! $fresh && is_array($row->snapshot) && strtotime($row->snapshot['expires_at'] ?? '') > time()) {
+        $cached = $row->snapshot;
+        if (! $fresh && is_array($cached) && strtotime($cached['expires_at']) > time()) {
             $this->assertUnchanged($row);
 
-            return new Principal($row->snapshot);
+            return new Principal($cached);
         }
         $selection = $row->selection;
         unset($selection['selected']);
@@ -206,6 +234,9 @@ class SessionManager
         return new Principal($snapshot);
     }
 
+    /**
+     * @return ($central is true ? string : null)
+     */
     public function logout(Request $request, bool $central = false): ?string
     {
         $row = $this->sessions->find($this->id($request));
@@ -256,9 +287,18 @@ class SessionManager
         return is_string($id) ? $id : null;
     }
 
+    /** @return array{access_token: string, expires_at: int, refresh_token: string|null, ...<array-key, mixed>} */
     private function tokens(IdentitySession $row): array
     {
-        return $this->vault->open($row->token_vault, 'session:'.$row->id);
+        $tokens = $this->vault->open($row->token_vault, 'session:'.$row->id);
+        $accessToken = $tokens['access_token'] ?? null;
+        $expiresAt = $tokens['expires_at'] ?? null;
+        $refreshToken = $tokens['refresh_token'] ?? null;
+        if (! is_string($accessToken) || ! is_int($expiresAt) || ($refreshToken !== null && ! is_string($refreshToken))) {
+            throw new IdentityException('vault_binding_failed', 401);
+        }
+
+        return ['access_token' => $accessToken, 'expires_at' => $expiresAt, 'refresh_token' => $refreshToken] + $tokens;
     }
 
     /** Observe existing deadlines without refreshing a token or extending activity. */
@@ -275,17 +315,20 @@ class SessionManager
         }
     }
 
+    /**
+     * @param  array<array-key, mixed>  $intent
+     */
     private function requireLiveIntent(array $intent): void
     {
-        if (! is_int($intent['created_at'] ?? null) || now()->timestamp - $intent['created_at'] >= min(300, (int) $this->config->value('local.transaction_seconds', 300))) {
+        if (! is_int($intent['created_at'] ?? null) || now()->getTimestamp() - $intent['created_at'] >= min(300, (int) $this->config->value('local.transaction_seconds', 300))) {
             throw new IdentityException('login_expired', 401);
         }
     }
 
-    private function renew(object $lock): void
+    private function renew(Lock $lock): void
     {
         try {
-            if ($lock->refresh(60)) {
+            if (method_exists($lock, 'refresh') && $lock->refresh(60)) {
                 return;
             }
         } catch (Throwable) { /* An unsupported or unavailable lease cannot authorize publication. */
@@ -293,11 +336,23 @@ class SessionManager
         throw new IdentityException('session_busy', 503);
     }
 
-    private function locked(string $id, callable $work): mixed
+    /**
+     * @param  callable(Lock): (IdentitySession|null)  $work
+     */
+    private function locked(string $id, callable $work): ?IdentitySession
     {
-        $lock = Cache::store($this->config->value('lock_store'))->lock('identity-refresh:'.$this->config->bindingHash().':'.$id, 60);
+        $store = Cache::store($this->config->value('lock_store'))->getStore();
+        if (! $store instanceof LockProvider) {
+            throw new IdentityException('session_busy', 503);
+        }
+        $lock = $store->lock('identity-refresh:'.$this->config->bindingHash().':'.$id, 60);
         try {
-            return $lock->block(3, fn () => $work($lock));
+            $result = $lock->block(3, fn () => $work($lock));
+            if ($result !== null && ! $result instanceof IdentitySession) {
+                throw new IdentityException('session_busy', 503);
+            }
+
+            return $result;
         } catch (LockTimeoutException) {
             throw new IdentityException('session_busy', 503);
         }

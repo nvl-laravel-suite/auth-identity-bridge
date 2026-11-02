@@ -22,6 +22,9 @@ class LocalProfileManager
         return $this->profiles->read($owner);
     }
 
+    /**
+     * @param  array<string, mixed>  $fields
+     */
     public function update(Authenticatable $owner, int $expectedVersion, array $fields): LocalProfile
     {
         return $this->actions->run($this->graph->make(Request::class), fn () => $this->profiles->lock($owner), function () use ($owner, $expectedVersion, $fields): LocalProfile {

@@ -57,16 +57,18 @@ final class BoundSessionHandler implements ExistenceAwareInterface, SessionHandl
         return $this->handler->destroy($this->key($id));
     }
 
-    public function gc(int $max_lifetime): int|false
+    public function gc(int $max_lifetime): int
     {
         return $this->garbage?->collect($max_lifetime) ?? 0;
     }
 
-    public function setExists($value): void
+    public function setExists($value): self
     {
         if ($this->handler instanceof ExistenceAwareInterface) {
             $this->handler->setExists($value);
         }
+
+        return $this;
     }
 
     public function setRequest(Request $request): void

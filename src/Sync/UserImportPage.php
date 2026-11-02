@@ -6,10 +6,13 @@ namespace IdentityPlatform\Laravel\Sync;
 
 final readonly class UserImportPage
 {
-    /** @param list<UserImportEntry> $entries */
+    /** @param array<array-key, mixed> $entries */
     public function __construct(#[\SensitiveParameter] private array $entries, public ?string $nextCursor) {}
 
-    /** Synchronous use only. */
+    /** Synchronous use only.
+     *
+     * @return array<array-key, mixed>
+     */
     public function entries(): array
     {
         return $this->entries;

@@ -15,26 +15,31 @@ use Throwable;
  */
 trait ManagedOperations
 {
+    /** @param array<array-key, mixed> $input */
     public function readProfile(Request $request, array $input): ManagedReadResult
     {
         return $this->managedRead($request, 'users.profile.read', $input);
     }
 
+    /** @param array<array-key, mixed> $input */
     public function readMetadata(Request $request, array $input): ManagedReadResult
     {
         return $this->managedRead($request, 'users.metadata.read', $input);
     }
 
+    /** @param array<array-key, mixed> $input */
     public function updateProfile(Request $request, #[\SensitiveParameter] array $input): ManagedCommandResult
     {
         return $this->managedWrite($request, 'users.profile.update', $input);
     }
 
+    /** @param array<array-key, mixed> $input */
     public function updateMetadata(Request $request, #[\SensitiveParameter] array $input): ManagedCommandResult
     {
         return $this->managedWrite($request, 'users.metadata.update', $input);
     }
 
+    /** @param array<array-key, mixed> $reference */
     public function operationStatus(Request $request, array $reference): ManagedCommandResult
     {
         $actor = null;
@@ -43,9 +48,12 @@ trait ManagedOperations
         try {
             $command = $this->commands->original($reference);
             $actor = $this->managedActor($request);
-            Contract::require($this->referenceMatches($command->reference, $actor), 'context_changed', 409);
-            $trusted = $command->reference;
+            $candidate = $command->reference;
+            $this->commands->validate($candidate);
+            Contract::require($this->referenceMatches($candidate, $actor), 'context_changed', 409);
+            $trusted = $candidate;
             if ($command->state === 'committed') {
+                Contract::require(is_array($command->receipt), 'invalid_command_reference', 409);
                 $confirmed = ManagedContract::receipt($trusted['operation'], $command->receipt, $trusted);
             }
             $data = $this->exchange($actor, 'operations.status', ['idempotencyKey' => $trusted['idempotencyKey']]);
@@ -63,7 +71,7 @@ trait ManagedOperations
             if ($actor && ! $this->managedCurrent($actor)) {
                 $error = new IdentityException('context_changed', 409);
             }
-            if ($confirmed !== null) {
+            if ($confirmed !== null && $actor !== null) {
                 // A later policy/MFA refusal cannot uncommit an already verified original receipt.
                 return new ManagedCommandResult('committed', $trusted, $confirmed, $this->managedCurrent($actor) ? 'current' : 'changed', 'pending', ManagedFailure::from($error));
             }
@@ -73,6 +81,7 @@ trait ManagedOperations
         }
     }
 
+    /** @param array<array-key, mixed> $input */
     private function managedRead(Request $request, string $operation, array $input): ManagedReadResult
     {
         $actor = null;
@@ -92,6 +101,7 @@ trait ManagedOperations
         }
     }
 
+    /** @param array<array-key, mixed> $input */
     private function managedWrite(Request $request, string $operation, #[\SensitiveParameter] array $input): ManagedCommandResult
     {
         $request->attributes->remove('identity.delegation.check');
@@ -102,6 +112,7 @@ trait ManagedOperations
         try {
             $input = ManagedContract::input($operation, $input);
             $actor = $this->managedActor($request);
+            Contract::require(is_array($input['changes'] ?? null), 'validation_failed', 400);
             $fields = array_keys($input['changes']);
             sort($fields, SORT_STRING);
             $reference = ['contract' => 'platform-consumer-command-reference.v1', 'bindingHash' => $this->config->bindingHash(), 'issuer' => $this->config->issuer(), 'applicationId' => $this->config->applicationId(), 'clientId' => $this->config->clientId(),
@@ -136,6 +147,10 @@ trait ManagedOperations
         }
     }
 
+    /**
+     * @param  array<array-key, mixed>  $reference
+     * @param  array<array-key, mixed>  $receipt
+     */
     private function managedCommitted(IdentitySession $actor, array $reference, array $receipt): ManagedCommandResult
     {
         $current = $this->managedCurrent($actor);
@@ -163,8 +178,8 @@ trait ManagedOperations
         $version = $request->input('context_version', $request->header('X-Identity-Context-Version'));
         Contract::require(is_scalar($version) && ctype_digit((string) $version) && (int) $version === $actor->context_version, 'context_changed', 409);
         Contract::require(ManagedContract::identifier($actor->id) && ManagedContract::identifier($actor->subject) && ManagedContract::identifier($actor->sid)
-            && is_int($actor->context_version) && $actor->context_version >= 0 && $actor->context_version <= 9007199254740991
-            && is_int($actor->token_generation) && $actor->token_generation >= 0 && $actor->token_generation <= 9007199254740991
+            && $actor->context_version >= 0 && $actor->context_version <= 9007199254740991
+            && $actor->token_generation >= 0 && $actor->token_generation <= 9007199254740991
             && $this->sessions->live($actor), 'session_inactive', 401);
         foreach (['organizationId', 'roleId'] as $key) {
             Contract::require(($actor->selection[$key] ?? null) === null || ManagedContract::identifier($actor->selection[$key]), 'context_changed', 409);
@@ -190,6 +205,7 @@ trait ManagedOperations
         }
     }
 
+    /** @param array<array-key, mixed> $reference */
     private function referenceMatches(array $reference, IdentitySession $actor): bool
     {
         return $reference['localSessionId'] === $actor->id && $reference['subject'] === $actor->subject && $reference['centralSessionId'] === $actor->sid

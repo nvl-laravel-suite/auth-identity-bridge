@@ -22,6 +22,9 @@ class LocalProfileRepository
         return LocalProfile::query()->createOrFirst(['id' => hash('sha256', $binding."\0".$ownerKey)], ['binding_hash' => $binding, 'owner_key' => $ownerKey, 'preferences' => [], 'version' => 1]);
     }
 
+    /**
+     * @param  array<string, mixed>  $fields
+     */
     public function update(Authenticatable $owner, int $expectedVersion, array $fields): LocalProfile
     {
         $limits = ['display_name' => 255, 'avatar' => 2048, 'biography' => 5000, 'locale' => 35, 'timezone' => 100];

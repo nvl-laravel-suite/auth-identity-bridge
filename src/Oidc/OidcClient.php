@@ -26,11 +26,18 @@ use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Throwable;
 
-/** Standard OIDC transport and verification; browser state belongs to Laravel's transaction store. */
+/**
+ * Standard OIDC transport and verification; browser state belongs to Laravel's transaction store.
+ *
+ * @phpstan-type IdClaims array{sub: non-empty-string, sid: non-empty-string, exp: int, ...<array-key, mixed>}
+ * @phpstan-type TokenBundle array{access_token: non-empty-string, refresh_token?: non-empty-string, id_token: non-empty-string, expires_at: int, subject: non-empty-string, sid: non-empty-string, claims: IdClaims, userinfo: array<string, mixed>, resource: bool}
+ * @phpstan-type LoginIntent array{state: non-empty-string, nonce: non-empty-string, verifier: non-empty-string, resource: bool, ...<array-key, mixed>}
+ */
 final class OidcClient
 {
     private ?OpenIdClient $client = null;
 
+    /** @var array<array-key, mixed>|null */
     private ?array $clientMetadata = null;
 
     private readonly ClientInterface $transport;
@@ -60,6 +67,7 @@ final class OidcClient
 
     private readonly IdentityHttp $http;
 
+    /** @return array{issuer: string, authorization_endpoint: non-empty-string, jwks_uri: non-empty-string, ...<array-key, mixed>} */
     public function metadata(): array
     {
         return $this->guard(function (): array {
@@ -67,14 +75,16 @@ final class OidcClient
             if (($metadata['issuer'] ?? null) !== $this->config->issuer()) {
                 throw new IdentityException('oidc_metadata_invalid', 502);
             }
-            foreach (['authorization_endpoint', 'token_endpoint', 'userinfo_endpoint', 'jwks_uri'] as $name) {
-                $this->trustedEndpoint($metadata[$name] ?? null);
-            }
+            $this->trustedEndpoint($metadata['authorization_endpoint'] ?? null);
+            $this->trustedEndpoint($metadata['token_endpoint'] ?? null);
+            $this->trustedEndpoint($metadata['userinfo_endpoint'] ?? null);
+            $this->trustedEndpoint($metadata['jwks_uri'] ?? null);
             if (isset($metadata['end_session_endpoint'])) {
                 $this->trustedEndpoint($metadata['end_session_endpoint']);
             }
             $algorithm = $this->algorithm();
-            if (! in_array($algorithm, $metadata['id_token_signing_alg_values_supported'] ?? [], true)) {
+            $supported = $metadata['id_token_signing_alg_values_supported'] ?? [];
+            if (! is_array($supported) || ! in_array($algorithm, $supported, true)) {
                 throw new IdentityException('oidc_algorithm_unavailable', 503);
             }
 
@@ -82,6 +92,7 @@ final class OidcClient
         });
     }
 
+    /** @param array<array-key, mixed> $intent */
     public function authorization(array $intent): string
     {
         return $this->guard(function () use ($intent): string {
@@ -109,6 +120,11 @@ final class OidcClient
         });
     }
 
+    /**
+     * @param  array<array-key, mixed>  $callback
+     * @param  array<array-key, mixed>  $intent
+     * @return TokenBundle
+     */
     public function exchange(array $callback, array $intent): array
     {
         return $this->guard(function () use ($callback, $intent): array {
@@ -152,6 +168,10 @@ final class OidcClient
         });
     }
 
+    /**
+     * @param  array<array-key, mixed>  $tokens
+     * @return TokenBundle
+     */
     public function refresh(array $tokens): array
     {
         return $this->guard(function () use ($tokens): array {
@@ -183,16 +203,17 @@ final class OidcClient
         });
     }
 
+    /** @return array<string, mixed> */
     public function userInfo(string $accessToken, string $expectedSubject): array
     {
         return $this->guard(function () use ($accessToken, $expectedSubject): array {
             if (! $this->nonempty($accessToken) || ! $this->nonempty($expectedSubject, 128)) {
                 throw new IdentityException('oidc_token_invalid', 401);
             }
-            $service = (new UserInfoServiceBuilder)
-                ->setHttpClient($this->transport)
-                ->setRequestFactory(new HttpFactory)
-                ->build();
+            $builder = new UserInfoServiceBuilder;
+            $builder->setHttpClient($this->transport);
+            $builder->setRequestFactory(new HttpFactory);
+            $service = $builder->build();
             $user = $service->getUserInfo($this->client(), TokenSet::fromParams([
                 'access_token' => $accessToken,
                 'token_type' => 'Bearer',
@@ -253,17 +274,23 @@ final class OidcClient
 
     private function authorizationService(): AuthorizationService
     {
-        return (new AuthorizationServiceBuilder)
-            ->setHttpClient($this->transport)
-            ->setRequestFactory(new HttpFactory)
-            ->setIdTokenVerifierBuilder(new IdTokenVerifierBuilder)
-            ->build();
+        $builder = new AuthorizationServiceBuilder;
+        $builder->setHttpClient($this->transport);
+        $builder->setRequestFactory(new HttpFactory);
+        $builder->setIdTokenVerifierBuilder(new IdTokenVerifierBuilder);
+
+        return $builder->build();
     }
 
+    /**
+     * @param  IdClaims  $claims
+     * @return TokenBundle
+     */
     private function bundle(TokenSetInterface $set, array $claims, bool $resource, int $grantStarted, ?int $idTokenExpiresAt): array
     {
         $attributes = $set->getAttributes();
-        if (! $this->nonempty($attributes['access_token'] ?? null)
+        $idToken = $set->getIdToken();
+        if (! $this->nonempty($idToken) || ! $this->nonempty($attributes['access_token'] ?? null)
             || ! is_int($attributes['expires_in'] ?? null) || $attributes['expires_in'] <= 0 || $attributes['expires_in'] > 300
             || ! is_string($attributes['token_type'] ?? null) || strcasecmp($attributes['token_type'], 'Bearer') !== 0
             || (isset($attributes['refresh_token']) && ! $this->nonempty($attributes['refresh_token']))) {
@@ -278,7 +305,7 @@ final class OidcClient
         return array_filter([
             'access_token' => $attributes['access_token'],
             'refresh_token' => $attributes['refresh_token'] ?? null,
-            'id_token' => $set->getIdToken(),
+            'id_token' => $idToken,
             'expires_at' => $expiresAt,
             'subject' => $claims['sub'],
             'sid' => $claims['sid'],
@@ -288,9 +315,14 @@ final class OidcClient
         ], static fn ($value) => $value !== null);
     }
 
+    /**
+     * @param  array<array-key, mixed>  $claims
+     *
+     * @phpstan-assert IdClaims $claims
+     */
     private function validateClaims(array $claims): void
     {
-        if (! $this->nonempty($claims['sub'] ?? null, 128) || ! $this->nonempty($claims['sid'] ?? null, 128)
+        if (! is_int($claims['exp'] ?? null) || ! $this->nonempty($claims['sub'] ?? null, 128) || ! $this->nonempty($claims['sid'] ?? null, 128)
             || (array_key_exists('urn:identity-platform:application', $claims) && $claims['urn:identity-platform:application'] !== $this->config->applicationId())
             || (array_key_exists('azp', $claims) && $claims['azp'] !== $this->config->clientId())
             || (is_array($claims['aud'] ?? null) && count($claims['aud']) > 1 && ($claims['azp'] ?? null) !== $this->config->clientId())) {
@@ -298,6 +330,11 @@ final class OidcClient
         }
     }
 
+    /**
+     * @param  array<array-key, mixed>  $intent
+     *
+     * @phpstan-assert LoginIntent $intent
+     */
     private function validateIntent(array $intent): void
     {
         if (! $this->nonempty($intent['state'] ?? null, 512) || ! $this->nonempty($intent['nonce'] ?? null, 512)
@@ -307,19 +344,19 @@ final class OidcClient
         }
     }
 
+    /** @return 'EdDSA'|'ES256'|'RS256' */
     private function algorithm(): string
     {
-        $algorithm = $this->config->value('browser.id_token_algorithm', 'EdDSA');
-        if (! in_array($algorithm, ['EdDSA', 'ES256', 'RS256'], true)) {
-            throw new IdentityException('oidc_algorithm_unavailable', 503);
-        }
-
-        return $algorithm;
+        return $this->config->value('browser.id_token_algorithm', 'EdDSA');
     }
 
+    /** @phpstan-assert non-empty-string $endpoint */
     private function trustedEndpoint(mixed $endpoint): void
     {
-        $parts = is_string($endpoint) ? parse_url($endpoint) : false;
+        if (! is_string($endpoint)) {
+            throw new IdentityException('oidc_metadata_invalid', 502);
+        }
+        $parts = parse_url($endpoint);
         $origin = parse_url($this->config->origin());
         if (! $parts || ($parts['scheme'] ?? null) !== 'https' || ($parts['host'] ?? null) !== ($origin['host'] ?? null)
             || ($parts['port'] ?? 443) !== ($origin['port'] ?? 443)
@@ -338,6 +375,7 @@ final class OidcClient
         }
     }
 
+    /** @return non-empty-string */
     private function redirectUri(): string
     {
         $destination = $this->config->value('browser.redirect_uri', $this->config->appOrigin().'/auth/callback');
@@ -351,11 +389,18 @@ final class OidcClient
         return 'urn:identity-platform:application:'.$this->config->applicationId();
     }
 
+    /** @phpstan-assert-if-true =non-empty-string $value */
     private function nonempty(mixed $value, int $maximum = 8192): bool
     {
         return is_string($value) && $value !== '' && strlen($value) <= $maximum && ! preg_match('/[\x00-\x1f\x7f]/', $value);
     }
 
+    /**
+     * @template TResult
+     *
+     * @param  callable(): TResult  $work
+     * @return TResult
+     */
     private function guard(callable $work): mixed
     {
         try {

@@ -18,6 +18,10 @@ final class CallbackRepository
 {
     public function __construct(private ConsumerGraph $graph, private IdentityConfig $config) {}
 
+    /**
+     * @param  array{event_id: string, type: string, subject: string|null, ...}  $event
+     * @return array{duplicate: bool, affected: int}
+     */
     public function event(array $event, string $bodyHash): array
     {
         return $this->receive('identity_event', $event['event_id'], $bodyHash, function () use ($event): int {
@@ -46,6 +50,10 @@ final class CallbackRepository
         });
     }
 
+    /**
+     * @param  array{jti: string, sid?: string, sub?: string}  $claims
+     * @return array{duplicate: bool, affected: int}
+     */
     public function logout(array $claims, string $bodyHash): array
     {
         return $this->receive('oidc_logout', $claims['jti'], $bodyHash, function () use ($claims): int {
@@ -57,10 +65,19 @@ final class CallbackRepository
                 $query->where('subject', $claims['sub']);
             }
 
-            return $query->delete();
+            $affected = $query->delete();
+            if (! is_int($affected)) {
+                throw new IdentityException('callback_unavailable', 503);
+            }
+
+            return $affected;
         });
     }
 
+    /**
+     * @param  Closure(): int  $effect
+     * @return array{duplicate: bool, affected: int}
+     */
     private function receive(string $protocol, string $messageId, string $bodyHash, Closure $effect): array
     {
         $binding = $this->config->bindingHash();
@@ -83,6 +100,9 @@ final class CallbackRepository
         });
     }
 
+    /**
+     * @return Builder<IdentitySession>
+     */
     private function sessions(): Builder
     {
         return IdentitySession::query()->where('binding_hash', $this->config->bindingHash());

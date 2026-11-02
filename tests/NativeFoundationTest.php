@@ -14,13 +14,11 @@ use IdentityPlatform\Laravel\Support\IdentityConfig;
 use IdentityPlatform\Laravel\Support\IdentityVault;
 use IdentityPlatform\Laravel\Sync\UserProjectionRepository;
 use IdentityPlatform\Laravel\Sync\UserSynchronizer;
-use IdentityPlatform\Laravel\Users\HasIdentityAccess;
 use IdentityPlatform\Laravel\Users\IdentityUserResolver;
 use IdentityPlatform\Laravel\Users\NativeOwner;
 use IdentityPlatform\Laravel\Users\ProjectionOwnership;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Foundation\Auth\User;
 use Illuminate\Http\Request;
 use Illuminate\Session\ArraySessionHandler;
 use Illuminate\Session\Store;
@@ -28,15 +26,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
-
-class NativeAccount extends User
-{
-    use HasIdentityAccess;
-
-    protected $table = 'native_accounts';
-
-    protected $guarded = [];
-}
 
 class NativeFoundationTest extends TestCase
 {

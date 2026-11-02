@@ -20,6 +20,9 @@ class UserSnapshotRepository
 {
     public function __construct(private ConsumerGraph $graph, private IdentityConfig $config, private UserProjectionRepository $projections, private NativeUserRepository $users, private NativeUserMapper $mapper) {}
 
+    /**
+     * @return list<string>
+     */
     public function applyBatch(UserSnapshotBatch $batch): array
     {
         Contract::require($batch->bindingHash === $this->config->bindingHash(), 'user_sync_binding_changed', 409);
@@ -71,7 +74,10 @@ class UserSnapshotRepository
         }
     }
 
-    /** Commit inactive security facts before any caller-owned native/import transaction. */
+    /** Commit inactive security facts before any caller-owned native/import transaction.
+     *
+     * @param  list<UserSnapshot>  $snapshots
+     */
     public function acceptInactive(array $snapshots): void
     {
         $inactive = array_values(array_filter($snapshots, fn ($s) => $s->state !== 'active'));
@@ -124,7 +130,10 @@ class UserSnapshotRepository
         return UserSyncState::query()->where('binding_hash', $this->config->bindingHash())->where('version', '>', 0)->where('native_status', 'pending')->when($subject !== null, fn ($q) => $q->where('subject', $subject))->count();
     }
 
-    /** A fresh proof for already accepted facts survives a failed native-only retry. */
+    /** A fresh proof for already accepted facts survives a failed native-only retry.
+     *
+     * @param  list<UserSnapshot>  $snapshots
+     */
     private function refreshAcceptedPolicies(array $snapshots): void
     {
         foreach ($snapshots as $snapshot) {
@@ -144,7 +153,7 @@ class UserSnapshotRepository
                 if (! $state || $state->version !== $snapshot->version) {
                     return;
                 }
-                Contract::require(hash_equals($state->digest, $snapshot->digest()), 'user_sync_conflict', 409);
+                Contract::require(is_string($state->digest) && hash_equals($state->digest, $snapshot->digest()), 'user_sync_conflict', 409);
                 if ($snapshot->policyVersion > $state->policy_version) {
                     $state->update(['policy_version' => $snapshot->policyVersion]);
                 }
@@ -180,6 +189,9 @@ class UserSnapshotRepository
         return hash('sha256', $snapshot->bindingHash."\0".$snapshot->issuer."\0".$snapshot->subject);
     }
 
+    /**
+     * @return array{UserSyncState, 'stale'|'unchanged'|'pending'}
+     */
     private function accept(UserSnapshot $snapshot, IdentityUser $projection): array
     {
         UserSyncState::query()->createOrFirst(['id' => $this->stateId($snapshot)], ['binding_hash' => $snapshot->bindingHash, 'issuer' => $snapshot->issuer, 'subject' => $snapshot->subject, 'projection_id' => $projection->id]);
@@ -188,7 +200,7 @@ class UserSnapshotRepository
             return [$state, 'stale'];
         }
         if ($snapshot->version === $state->version) {
-            Contract::require(hash_equals($state->digest, $snapshot->digest()), 'user_sync_conflict', 409);
+            Contract::require(is_string($state->digest) && hash_equals($state->digest, $snapshot->digest()), 'user_sync_conflict', 409);
             if ($snapshot->policyVersion > $state->policy_version) {
                 $state->update(['policy_version' => $snapshot->policyVersion]);
             }
@@ -209,7 +221,7 @@ class UserSnapshotRepository
             return 'stale';
         }
         if ($observed && $snapshot->version === $observed->version) {
-            Contract::require(hash_equals($observed->digest, $snapshot->digest()), 'user_sync_conflict', 409);
+            Contract::require(is_string($observed->digest) && hash_equals($observed->digest, $snapshot->digest()), 'user_sync_conflict', 409);
             if ($observed->native_version === $observed->version && $observed->native_status === 'applied') {
                 $state = UserSyncState::query()->whereKey($observed->id)->lockForUpdate()->firstOrFail();
                 if ($snapshot->policyVersion > $state->policy_version) {
@@ -244,6 +256,9 @@ class UserSnapshotRepository
         return 'applied';
     }
 
+    /**
+     * @param  list<UserSnapshot>  $snapshots
+     */
     public function recordProjectionFailure(array $snapshots): void
     {
         foreach ($snapshots as $snapshot) {

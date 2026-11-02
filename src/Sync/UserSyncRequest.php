@@ -4,8 +4,23 @@ declare(strict_types=1);
 
 namespace IdentityPlatform\Laravel\Sync;
 
+use Carbon\CarbonImmutable;
 use IdentityPlatform\Laravel\Models\IdentityModel;
 
+/**
+ * Persisted local state and native casts.
+ *
+ * @property string $id
+ * @property string $binding_hash
+ * @property string $issuer
+ * @property string $subject
+ * @property string $kind
+ * @property int $generation
+ * @property int $completed_generation
+ * @property int $attempts
+ * @property string|null $last_error
+ * @property CarbonImmutable|null $next_attempt_at
+ */
 class UserSyncRequest extends IdentityModel
 {
     /** @var list<string> Explicit internal persistence fields; services own authority. */

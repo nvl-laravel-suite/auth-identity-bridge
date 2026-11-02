@@ -9,8 +9,13 @@ use JsonSerializable;
 /** Immutable receipt and original command identity; never contains changed values or audit reason. */
 final readonly class ManagedCommandResult implements JsonSerializable
 {
+    /**
+     * @param  array<array-key, mixed>|null  $reference
+     * @param  array<array-key, mixed>|null  $receipt
+     */
     public function __construct(public string $status, public ?array $reference = null, public ?array $receipt = null, public ?string $context = null, public ?string $refresh = null, public ?ManagedFailure $error = null) {}
 
+    /** @return array<string, mixed> */
     public function jsonSerialize(): array
     {
         return array_filter(['status' => $this->status, 'reference' => $this->reference, 'receipt' => $this->receipt, 'context' => $this->context, 'refresh' => $this->refresh, 'error' => $this->error], fn ($value) => $value !== null);

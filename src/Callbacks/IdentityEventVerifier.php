@@ -26,10 +26,14 @@ final class IdentityEventVerifier
 
     public function __construct(private IdentityConfig $config) {}
 
+    /**
+     * @param  array<array-key, mixed>  $headers
+     * @return array{schema_version: 1, event_id: string, application_id: string, type: string, occurred_at: string, subject: string|null}
+     */
     public function verify(string $rawBody, array $headers): array
     {
         $secret = $this->config->value('callbacks.event_secret');
-        if ($secret === null || $secret === '') {
+        if ($secret === null) {
             throw new IdentityException('event_receiver_disabled', 404);
         }
         $previous = $this->config->value('callbacks.event_secret_previous');
@@ -48,7 +52,7 @@ final class IdentityEventVerifier
         $eventId = $this->header($headers, 'x-identity-event-id');
         $timestamp = $this->header($headers, 'x-identity-timestamp');
         $signature = $this->header($headers, 'x-identity-signature');
-        if (! is_string($secret) || strlen($secret) < 32 ||
+        if (strlen($secret) < 32 ||
             ! preg_match('/\A[A-Za-z0-9_-]{1,128}\z/', $eventId) ||
             ! preg_match('/\A[0-9]{1,12}\z/', $timestamp) ||
             ! preg_match('/\Av1=[a-f0-9]{64}\z/', $signature) ||
@@ -56,7 +60,7 @@ final class IdentityEventVerifier
             throw new IdentityException('event_signature_invalid', 401);
         }
         $keys = [$secret];
-        if ($previous !== null && $now < (new DateTimeImmutable($expires))->getTimestamp()) {
+        if ($previous !== null && is_string($expires) && $now < (new DateTimeImmutable($expires))->getTimestamp()) {
             $keys[] = $previous;
         }
         $matched = false;
@@ -96,9 +100,12 @@ final class IdentityEventVerifier
             throw new IdentityException('event_subject_required', 400);
         }
 
-        return $event;
+        return ['schema_version' => $event['schema_version'], 'event_id' => $event['event_id'], 'application_id' => $event['application_id'], 'type' => $event['type'], 'occurred_at' => $event['occurred_at'], 'subject' => $event['subject']];
     }
 
+    /**
+     * @param  array<array-key, mixed>  $headers
+     */
     private function header(array $headers, string $name): string
     {
         $found = [];
@@ -111,12 +118,18 @@ final class IdentityEventVerifier
         return count($found) === 1 && is_string($found[0]) ? $found[0] : '';
     }
 
+    /**
+     * @phpstan-assert-if-true non-empty-string $value
+     */
     private static function identifier(mixed $value): bool
     {
         return is_string($value) && $value !== '' && ! str_contains($value, "\0") &&
             strlen(mb_convert_encoding($value, 'UTF-16LE', 'UTF-8')) <= 256;
     }
 
+    /**
+     * @phpstan-assert-if-true string $value
+     */
     private static function instant(mixed $value): bool
     {
         if (! is_string($value) || ! preg_match('/\A([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2})(?::([0-9]{2})(?:\.[0-9]+)?)?Z\z/', $value, $parts)) {

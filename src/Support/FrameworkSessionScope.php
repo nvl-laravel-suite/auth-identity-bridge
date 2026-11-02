@@ -10,11 +10,13 @@ use IdentityPlatform\Laravel\Authorization\IdentityAccess;
 use IdentityPlatform\Laravel\Exceptions\IdentityException;
 use Illuminate\Auth\AuthManager;
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\Routing\ResponseFactory;
 use Illuminate\Cookie\CookieJar;
 use Illuminate\Http\Request;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Facade;
+use ReflectionProperty;
 
 /** Sequential-worker adapter. Does not claim concurrent coroutine isolation. */
 final readonly class FrameworkSessionScope
@@ -39,10 +41,14 @@ final readonly class FrameworkSessionScope
 
     private function runBrowser(ConsumerGraph $graph, Request $request, Closure $next): mixed
     {
+        ContextDefinition::require($this->app instanceof Application, 'consumer_dependency_not_supported');
         // Both framework redirect entry points retain the session store they first resolve.
         $keys = ['session', 'session.store', 'auth', 'auth.driver', 'cookie', StartSession::class, 'redirect', ResponseFactory::class];
         $instances = array_intersect_key(ContainerInstances::all($this->app), array_flip($keys));
-        $facades = (Closure::bind(static fn () => array_intersect_key(Facade::$resolvedInstance ?? [], array_flip(['session', 'auth', 'cookie', 'redirect', ResponseFactory::class])), null, Facade::class))();
+        $facadeState = new ReflectionProperty(Facade::class, 'resolvedInstance');
+        $resolvedFacades = $facadeState->getValue();
+        ContextDefinition::require($resolvedFacades === null || is_array($resolvedFacades), 'consumer_dependency_not_supported');
+        $facades = array_intersect_key($resolvedFacades ?? [], array_flip(['session', 'auth', 'cookie', 'redirect', ResponseFactory::class]));
         $config = $this->app->make('config');
         $sessionConfig = $config->get('session');
         $authConfig = $config->get('auth');
@@ -63,7 +69,7 @@ final readonly class FrameworkSessionScope
             $config->set('auth.defaults.guard', $guardName);
             $config->set('auth.guards.'.$guardName, ['driver' => 'identity']);
             $auth = new AuthManager($this->app);
-            $auth->extend('identity', static fn () => new IdentityRequestGuard(static function () use ($graph) {
+            $auth->extend('identity', fn () => new IdentityRequestGuard(static function () use ($graph) {
                 try {
                     return $graph->make(IdentityAccess::class)->user();
                 } catch (IdentityException $error) {
@@ -74,7 +80,7 @@ final readonly class FrameworkSessionScope
                 }
             }, $request));
             $this->app->instance('auth', $auth);
-            $request->setUserResolver(static fn ($guard = null) => $auth->guard($guard)->user());
+            $request->setUserResolver(static fn (string|\UnitEnum|null $guard = null) => $auth->guard($guard)->user());
 
             return $next($request);
         } finally {
@@ -86,11 +92,13 @@ final readonly class FrameworkSessionScope
                     $this->app->instance($key, $instances[$key]);
                 }
             }
-            (Closure::bind(static function () use ($facades): void {
+            $currentFacades = $facadeState->getValue();
+            ContextDefinition::require($currentFacades === null || is_array($currentFacades), 'consumer_dependency_not_supported');
+            (Closure::bind(static function () use ($facades, $currentFacades): void {
                 foreach (['session', 'auth', 'cookie', 'redirect', ResponseFactory::class] as $key) {
-                    unset(Facade::$resolvedInstance[$key]);
+                    unset($currentFacades[$key]);
                 }
-                Facade::$resolvedInstance = array_replace(Facade::$resolvedInstance ?? [], $facades);
+                Facade::$resolvedInstance = array_replace($currentFacades ?? [], $facades);
             }, null, Facade::class))();
             $request->setUserResolver($userResolver);
             (Closure::bind(static function () use ($request, $session): void {

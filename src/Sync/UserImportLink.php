@@ -6,6 +6,17 @@ namespace IdentityPlatform\Laravel\Sync;
 
 use IdentityPlatform\Laravel\Models\IdentityModel;
 
+/**
+ * Persisted local state and native casts.
+ *
+ * @property string $id
+ * @property string $binding_hash
+ * @property string $source_user_id
+ * @property string $issuer
+ * @property string $subject
+ * @property string $projection_id
+ * @property string $owner_key
+ */
 class UserImportLink extends IdentityModel
 {
     /** @var list<string> Explicit internal persistence fields; services own authority. */

@@ -14,6 +14,9 @@ class UserSynchronizer
 {
     public function __construct(private ConsumerGraph $graph, private IdentityConfig $config, private UserProjectionRepository $repository) {}
 
+    /**
+     * @param  array<string, mixed>  $verifiedUserinfo
+     */
     public function sync(array $verifiedUserinfo): IdentityUser
     {
         $subject = $verifiedUserinfo['sub'] ?? null;

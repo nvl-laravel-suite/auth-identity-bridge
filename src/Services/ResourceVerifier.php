@@ -10,6 +10,7 @@ use IdentityPlatform\Laravel\Exceptions\IdentityException;
 use IdentityPlatform\Laravel\Support\IdentityConfig;
 use IdentityPlatform\Laravel\Support\IdentityHttp;
 
+/** @phpstan-import-type Decision from Principal */
 final class ResourceVerifier
 {
     public function __construct(private IdentityConfig $config, private IdentityHttp $http) {}
@@ -28,6 +29,18 @@ final class ResourceVerifier
             default => throw new IdentityException('credential_kind_invalid', 400),
         };
         $data = $this->http->json($path, [$field => $credential, 'audience' => $this->audience()], 'resource');
+        $this->validateDecision($data, $kind, $organizationId);
+
+        return new Principal($data);
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $data
+     *
+     * @phpstan-assert Decision $data
+     */
+    private function validateDecision(array $data, string $kind, ?string $organizationId): void
+    {
         $personal = $kind === 'personal_key';
         $required = ['contract', 'issuer', 'principal_kind', 'subject', 'credential_id', 'application_id', 'audience', 'organization_id', 'permissions', 'credential_version', 'issued_at', 'expires_at', 'assurance', 'delegation'];
         $required = [...$required, ...($personal ? ['client_id', 'selected_role_id', 'security_version'] : ['authentication_method', 'service_client_id', 'resource_client_id', 'service_version'])];
@@ -49,8 +62,6 @@ final class ResourceVerifier
                 && ($machine ? $data['service_client_id'] === null : Contract::identifier($data['service_client_id']) && $data['service_client_id'] === $data['credential_id']), 'invalid_credential_decision');
             Contract::require(count($data['permissions']) <= 250 && array_intersect($data['permissions'], ['openid', 'profile', 'email', 'offline_access']) === [], 'invalid_credential_decision');
         }
-
-        return new Principal($data);
     }
 
     private function human(string $token): Principal
@@ -65,10 +76,11 @@ final class ResourceVerifier
             }
             throw $error;
         }
-        if (($info['active'] ?? null) === false) {
+        $active = $info['active'] ?? null;
+        if ($active === false) {
             throw new IdentityException('token_inactive', 401);
         }
-        Contract::require(($info['active'] ?? null) === true && Contract::identifier($info['sub'] ?? null) && Contract::identifier($info['sid'] ?? null)
+        Contract::require($active === true && Contract::identifier($info['sub'] ?? null) && Contract::identifier($info['sid'] ?? null)
             && Contract::identifier($info['client_id'] ?? null) && ($info['azp'] ?? null) === $info['client_id']
             && is_string($info['scope'] ?? null) && is_int($info['iat'] ?? null) && is_int($info['exp'] ?? null), 'invalid_response', 502);
         $audiences = is_string($info['aud'] ?? null) ? [$info['aud']] : ($info['aud'] ?? null);

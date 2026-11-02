@@ -12,11 +12,16 @@ use IdentityPlatform\Laravel\Sync\UserSyncWorkRepository;
 use Illuminate\Database\Eloquent\Builder;
 use Throwable;
 
-/** @api */
+/**
+ * @api
+ *
+ * @phpstan-type CommandReference array{contract: 'platform-consumer-command-reference.v1', bindingHash: string, issuer: string, applicationId: string, clientId: string, localSessionId: non-empty-string, subject: non-empty-string, centralSessionId: non-empty-string, organizationId: non-empty-string|null, roleId: non-empty-string|null, contextVersion: int<0, max>, operation: 'users.profile.update'|'users.metadata.update', userId: non-empty-string, expectedVersion: positive-int, idempotencyKey: non-empty-string, changedFields: non-empty-list<non-empty-string>}
+ */
 class CommandJournal
 {
     public function __construct(private IdentityConfig $config, private UserSyncManager $sync, private UserSyncWorkRepository $work) {}
 
+    /** @param array<array-key, mixed> $reference */
     public function retain(array $reference): ConsumerCommand
     {
         $this->validate($reference);
@@ -32,6 +37,7 @@ class CommandJournal
         });
     }
 
+    /** @param array<array-key, mixed> $reference */
     public function original(array $reference): ConsumerCommand
     {
         $this->validate($reference);
@@ -41,6 +47,7 @@ class CommandJournal
         return $row;
     }
 
+    /** @param array<array-key, mixed> $reference */
     public function state(array $reference, string $state): void
     {
         Contract::require(in_array($state, ['failed', 'unknown'], true), 'invalid_command_reference', 409);
@@ -49,6 +56,7 @@ class CommandJournal
         $this->query()->whereKey($row->id)->where('state', '!=', 'committed')->update(['state' => $state]);
     }
 
+    /** @return CommandReference */
     public function forActor(IdentitySession $actor, string $key): array
     {
         $id = $this->id(['bindingHash' => $this->config->bindingHash(), 'subject' => $actor->subject, 'centralSessionId' => $actor->sid, 'organizationId' => $actor->selection['organizationId'] ?? null, 'roleId' => $actor->selection['roleId'] ?? null, 'idempotencyKey' => $key]);
@@ -60,8 +68,13 @@ class CommandJournal
         return $row->reference;
     }
 
+    /**
+     * @param  array<array-key, mixed>  $reference
+     * @param  array<array-key, mixed>  $receipt
+     */
     public function committed(array $reference, array $receipt): ConsumerCommand
     {
+        $this->validate($reference);
         ManagedContract::receipt($reference['operation'], $receipt, $reference);
 
         return $this->model()->getConnection()->transaction(function () use ($reference, $receipt) {
@@ -107,7 +120,11 @@ class CommandJournal
         }
     }
 
-    /** Host schedulers may retry committed refresh intents; original ordinary authority is still required for unknown status. */
+    /**
+     * Host schedulers may retry committed refresh intents; original ordinary authority is still required for unknown status.
+     *
+     * @return array<array-key, mixed>
+     */
     public function pendingRefreshIds(int $limit = 100): array
     {
         Contract::require($limit >= 1 && $limit <= 100, 'validation_failed', 400);
@@ -115,6 +132,11 @@ class CommandJournal
         return $this->query()->where('state', 'committed')->whereIn('refresh', ['pending', 'not_configured'])->orderBy('id')->limit($limit)->pluck('id')->all();
     }
 
+    /**
+     * @param  array<array-key, mixed>  $reference
+     *
+     * @phpstan-assert CommandReference $reference
+     */
     public function validate(array $reference): void
     {
         Contract::require(Contract::keys($reference, ['contract', 'bindingHash', 'issuer', 'applicationId', 'clientId', 'localSessionId', 'subject', 'centralSessionId', 'organizationId', 'roleId', 'contextVersion', 'operation', 'userId', 'expectedVersion', 'idempotencyKey', 'changedFields'])
@@ -129,6 +151,7 @@ class CommandJournal
             && ManagedContract::key($reference['idempotencyKey']) && ManagedContract::fieldNames($reference['operation'], $reference['changedFields']), 'invalid_command_reference', 409);
     }
 
+    /** @param array<array-key, mixed> $reference */
     private function id(array $reference): string
     {
         return hash('sha256', json_encode([$reference['bindingHash'], $reference['subject'], $reference['centralSessionId'], $reference['organizationId'], $reference['roleId'], $reference['idempotencyKey']], JSON_THROW_ON_ERROR));
@@ -139,6 +162,7 @@ class CommandJournal
         return (new ConsumerCommand)->setConnection($this->config->value('connection'));
     }
 
+    /** @return Builder<ConsumerCommand> */
     private function query(): Builder
     {
         return $this->model()->newQuery()->where('binding_hash', $this->config->bindingHash());

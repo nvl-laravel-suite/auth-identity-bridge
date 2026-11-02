@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IdentityPlatform\Laravel\Users;
 
+use IdentityPlatform\Laravel\Authorization\Contract;
 use IdentityPlatform\Laravel\Exceptions\IdentityException;
 use IdentityPlatform\Laravel\Models\IdentityUser;
 use IdentityPlatform\Laravel\Models\IdentityUserLink;
@@ -33,9 +34,6 @@ class EloquentIdentityUserResolver implements IdentityUserResolver
         if ($model === null) {
             return $this->graph->make(UserProjectionRepository::class)->present($projection);
         }
-        if (! is_string($model) || ! is_subclass_of($model, Model::class) || ! is_subclass_of($model, Authenticatable::class) || ! $projection->exists || $projection->issuer !== $this->config->issuer()) {
-            throw new IdentityException('identity_user_invalid', 409);
-        }
         $connection = (new IdentityUserLink)->getConnection();
         if ((new $model)->getConnection()->getName() !== $connection->getName()) {
             throw new IdentityException('identity_user_connection_mismatch', 503);
@@ -64,8 +62,8 @@ class EloquentIdentityUserResolver implements IdentityUserResolver
                 }
                 $link = IdentityUserLink::query()->where('binding_hash', $this->config->bindingHash())->where('projection_id', $locked->id)->first();
                 if ($link) {
-                    $user = $link->user_type === $model ? $model::query()->find($link->user_id) : null;
-                    if (! $user || NativeOwner::key($user) !== $link->owner_key) {
+                    $user = $link->user_type === $model ? $model::query()->whereKey($link->user_id)->first() : null;
+                    if (! $user instanceof Authenticatable || NativeOwner::key($user) !== $link->owner_key) {
                         throw new IdentityException('identity_user_conflict', 409);
                     }
 
@@ -76,15 +74,22 @@ class EloquentIdentityUserResolver implements IdentityUserResolver
                     throw new IdentityException('identity_native_writer_required', 409);
                 }
                 $policy = $this->config->value('users.lifecycle_policy', RetainedNativeLifecycle::class);
-                if (! (new $policy)->mayProvision($state?->state ?? 'active')) {
+                Contract::require($policy !== null, 'identity_user_mapping_invalid', 503);
+                if (! (new $policy)->mayProvision($state->state ?? 'active')) {
                     throw new IdentityException('identity_user_provisioning_denied', 409);
                 }
                 // Observe this factory invocation, not a stale wasRecentlyCreated flag on a supplied row.
                 $created = [];
                 $events = Model::getEventDispatcher();
+                if ($events === null) {
+                    throw new IdentityException('identity_user_unavailable', 503);
+                }
                 $factoryEvents = clone $events;
-                $factoryEvents->listen('eloquent.created: '.$model, function ($createdUser) use (&$created): void {
-                    $created[] = (string) $createdUser->getKey();
+                $factoryEvents->listen('eloquent.created: '.$model, function (Model $createdUser) use (&$created): void {
+                    $key = $createdUser->getKey();
+                    if (is_int($key) || is_string($key)) {
+                        $created[] = (string) $key;
+                    }
                 });
                 Model::setEventDispatcher($factoryEvents);
                 try {
@@ -93,7 +98,7 @@ class EloquentIdentityUserResolver implements IdentityUserResolver
                     Model::setEventDispatcher($events);
                 }
 
-                if (! $user instanceof $model || ! $user->exists || ! $user->wasRecentlyCreated || ! in_array((string) $user->getKey(), $created, true) || $user->getConnection()->getName() !== $locked->getConnection()->getName()) {
+                if (! $user instanceof $model || ! $user->exists || ! $user->wasRecentlyCreated || (! is_string($user->getKey()) && ! is_int($user->getKey())) || ! in_array((string) $user->getKey(), $created, true) || $user->getConnection()->getName() !== $locked->getConnection()->getName()) {
                     throw new IdentityException('identity_user_invalid', 409);
                 }
                 $this->graph->make(ProjectionOwnership::class)->native($user, $locked, true);

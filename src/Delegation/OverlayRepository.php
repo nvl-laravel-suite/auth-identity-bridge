@@ -11,6 +11,9 @@ class OverlayRepository
 {
     public function __construct(private IdentityConfig $config) {}
 
+    /**
+     * @return Builder<IdentityDelegation>
+     */
     public function query(): Builder
     {
         return IdentityDelegation::where('binding_hash', $this->config->bindingHash());
@@ -23,6 +26,9 @@ class OverlayRepository
         return ($lock ? $query->lockForUpdate() : $query)->first();
     }
 
+    /**
+     * @param  array<string, mixed>  $values
+     */
     public function save(string $sessionId, array $values): IdentityDelegation
     {
         return IdentityDelegation::updateOrCreate(['id' => $sessionId, 'binding_hash' => $this->config->bindingHash()], $values);

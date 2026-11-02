@@ -9,11 +9,15 @@ use ReflectionMethod;
 
 /** Trusted host code owns whole prefixes, including names not yet mapped.
  * @api
+ *
+ * @phpstan-type Mapping array{permission: string, policy: class-string, method: string}
  */
 final class AbilityRegistry
 {
+    /** @var array<string, true> */
     private array $families = [];
 
+    /** @var array<string, Mapping> */
     private array $mappings = [];
 
     public function family(string $prefix): self
@@ -26,6 +30,7 @@ final class AbilityRegistry
         return $this;
     }
 
+    /** @param class-string $policy */
     public function map(string $ability, string $permission, string $policy, string $method): self
     {
         if (! $this->owns($ability) || ! Contract::strings([$ability], true) || ! Contract::strings([$permission], true)
@@ -46,6 +51,7 @@ final class AbilityRegistry
         return array_any(array_keys($this->families), fn (string $prefix): bool => str_starts_with($ability, $prefix));
     }
 
+    /** @return Mapping|null */
     public function mapping(string $ability): ?array
     {
         return $this->mappings[$ability] ?? null;

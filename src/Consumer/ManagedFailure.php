@@ -37,6 +37,7 @@ final readonly class ManagedFailure implements JsonSerializable
             && isset(self::CODES[$error->errorCode]) && self::CODES[$error->errorCode] !== 'recovery_pending';
     }
 
+    /** @return array{kind: string, code: string} */
     public function jsonSerialize(): array
     {
         return ['kind' => $this->kind, 'code' => $this->code];

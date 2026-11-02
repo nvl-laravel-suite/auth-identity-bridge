@@ -9,8 +9,15 @@ use IdentityPlatform\Laravel\Support\IdentityConfig;
 
 final readonly class UserSnapshotBatch
 {
+    /**
+     * @param  list<UserSnapshot>  $profiles
+     */
     private function __construct(public string $bindingHash, public int $policyVersion, public array $profiles, public ?string $nextCursor) {}
 
+    /**
+     * @param  array<array-key, mixed>  $data
+     * @param  array<array-key, mixed>|null  $requested
+     */
     public static function validate(array $data, IdentityConfig $config, ?array $requested = null): self
     {
         Contract::require(Contract::keys($data, ['contract', 'issuer', 'applicationId', 'clientId', 'policyVersion', 'profiles', 'nextCursor'])
@@ -31,6 +38,7 @@ final readonly class UserSnapshotBatch
         return new self($config->bindingHash(), $data['policyVersion'], $profiles, $data['nextCursor']);
     }
 
+    /** @phpstan-assert-if-true =non-empty-string $cursor */
     public static function cursor(mixed $cursor): bool
     {
         return is_string($cursor) && $cursor !== '' && strlen($cursor) <= 4096 && mb_check_encoding($cursor, 'UTF-8') && ! preg_match('/[\x00-\x1f\x7f]/', $cursor);

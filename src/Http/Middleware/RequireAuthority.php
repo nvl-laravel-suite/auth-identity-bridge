@@ -9,12 +9,15 @@ use IdentityPlatform\Laravel\Auth\SessionManager;
 use IdentityPlatform\Laravel\Authorization\Principal;
 use IdentityPlatform\Laravel\Exceptions\IdentityException;
 use Illuminate\Http\Request;
+use Stringable;
+use Symfony\Component\HttpFoundation\Response;
 
 class RequireAuthority
 {
     public function __construct(private SessionManager $sessions) {}
 
-    public function handle(Request $request, Closure $next, string $kind, string $value = '')
+    /** @param Closure(Request): Response $next */
+    public function handle(Request $request, Closure $next, string $kind, string $value = ''): Response
     {
         $principal = $request->attributes->get('identity.principal');
         $freshRequired = ! in_array($request->method(), ['GET', 'HEAD'], true) || $kind === 'mfa';
@@ -34,7 +37,8 @@ class RequireAuthority
         }
         $expectedOrganization = $kind === 'organization' ? $request->route($value) : null;
         if (is_object($expectedOrganization) && method_exists($expectedOrganization, 'getKey')) {
-            $expectedOrganization = (string) $expectedOrganization->getKey();
+            $key = $expectedOrganization->getKey();
+            $expectedOrganization = is_scalar($key) || $key === null || $key instanceof Stringable ? (string) $key : null;
         }
         $allowed = match ($kind) {
             'permission' => $principal->hasPermission($value),

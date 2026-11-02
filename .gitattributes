@@ -9,4 +9,5 @@
 /vendor export-ignore
 /.temp export-ignore
 /phpstan.neon* export-ignore
+/stubs export-ignore
 # END NVL COMPOSER EXPORTS

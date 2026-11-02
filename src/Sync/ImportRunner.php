@@ -8,6 +8,8 @@ use IdentityPlatform\Laravel\Authorization\Contract;
 use IdentityPlatform\Laravel\Exceptions\IdentityException;
 use IdentityPlatform\Laravel\Support\ExecutionPolicy;
 use IdentityPlatform\Laravel\Support\IdentityConfig;
+use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
 
@@ -18,6 +20,7 @@ class ImportRunner
 {
     public function __construct(private IdentityConfig $config, private ImportPreflight $preflight, private ImportCheckpointRepository $checkpoints, private UserImportClient $client, private UserImportBootstrap $bootstrap, private UserSnapshotRepository $snapshots) {}
 
+    /** @return array{runId: string, imported: int, associated: int, applied: int, stale: int, missing: int, pending: int, nativePending: int, unresolved: int, failed: int, error: string|null, exhausted: bool, completed: bool, providerAcceptedInLastAttempt: int, remoteOutcome: string, failedBatch: list<array{sourceUserId: string, nativeUserId: string}>}|array{runId: string, remoteOutcome: string, providerAcceptedInLastAttempt: int, completed: false, error: string, checkpointStatus: string, failedBatch: list<array{sourceUserId: string, nativeUserId: string}>}|array{runId: null, dryRun: true, validated: int, exhausted: bool, completed: false, remoteChecks: string} */
     public function run(string $sourceName, #[\SensitiveParameter] UserImportSource $source, ?string $resume = null, bool $dryRun = false, int $limit = 100, int $maxPages = 1000): array
     {
         try {
@@ -27,6 +30,7 @@ class ImportRunner
         }
     }
 
+    /** @return array{runId: string, imported: int, associated: int, applied: int, stale: int, missing: int, pending: int, nativePending: int, unresolved: int, failed: int, error: string|null, exhausted: bool, completed: bool, providerAcceptedInLastAttempt: int, remoteOutcome: string, failedBatch: list<array{sourceUserId: string, nativeUserId: string}>}|array{runId: string, remoteOutcome: string, providerAcceptedInLastAttempt: int, completed: false, error: string, checkpointStatus: string, failedBatch: list<array{sourceUserId: string, nativeUserId: string}>}|array{runId: null, dryRun: true, validated: int, exhausted: bool, completed: false, remoteChecks: string} */
     private function execute(string $sourceName, #[\SensitiveParameter] UserImportSource $source, ?string $resume, bool $dryRun, int $limit, int $maxPages): array
     {
         app(ExecutionPolicy::class)->assertOutboundAllowed();
@@ -39,8 +43,10 @@ class ImportRunner
         if ($dryRun) {
             return $this->dryRun($sourceName, $source, $limit, $maxPages);
         }
-        $lock = Cache::store($this->config->value('lock_store'))->lock('identity-import:'.$this->config->bindingHash(), 60);
-        Contract::require($lock->get(), 'user_import_busy', 409);
+        $store = Cache::store($this->config->value('lock_store'))->getStore();
+        Contract::require($store instanceof LockProvider, 'user_import_busy', 409);
+        $lock = $store->lock('identity-import:'.$this->config->bindingHash(), 60);
+        Contract::require($lock->get() === true, 'user_import_busy', 409);
         $run = null;
         $providerAccepted = 0;
         $remoteOutcome = 'not_attempted';
@@ -80,6 +86,7 @@ class ImportRunner
                 }
                 $users = [];
                 foreach ($page->entries() as $index => $entry) {
+                    Contract::require($entry instanceof UserImportEntry, 'user_import_input_invalid', 422);
                     $payload = $entry->payload();
                     // Known commits do not retransmit hashes. Unknown commits replay the same stable provider key.
                     if ($this->checkpoints->knownSubject($references[$index]['id'])) {
@@ -135,12 +142,17 @@ class ImportRunner
     }
 
     /** In-memory facts only: durable/native counts and exhaustion cannot be inferred during an outage. */
+    /**
+     * @param  list<array{sourceUserId: string, nativeUserId: string}>  $failureIds
+     * @return array{runId: string, remoteOutcome: string, providerAcceptedInLastAttempt: int, completed: false, error: string, checkpointStatus: string, failedBatch: list<array{sourceUserId: string, nativeUserId: string}>}
+     */
     private function unavailableCheckpoint(ImportRun $run, string $remoteOutcome, int $providerAccepted, array $failureIds): array
     {
         return ['runId' => $run->id, 'remoteOutcome' => $remoteOutcome, 'providerAcceptedInLastAttempt' => $providerAccepted,
             'completed' => false, 'error' => 'user_import_checkpoint_unavailable', 'checkpointStatus' => 'unavailable', 'failedBatch' => $failureIds];
     }
 
+    /** @return array{runId: null, dryRun: true, validated: int, exhausted: bool, completed: false, remoteChecks: string} */
     private function dryRun(string $name, #[\SensitiveParameter] UserImportSource $source, int $limit, int $maxPages): array
     {
         $cursor = null;
@@ -173,9 +185,9 @@ class ImportRunner
         return ['runId' => null, 'dryRun' => true, 'validated' => $validated, 'exhausted' => $cursor === null, 'completed' => false, 'remoteChecks' => 'unverified'];
     }
 
-    private function lease(object $lock): void
+    private function lease(Lock $lock): void
     {
-        Contract::require($lock->refresh(60), 'user_import_busy', 409);
+        Contract::require(method_exists($lock, 'refresh') && $lock->refresh(60) === true, 'user_import_busy', 409);
         app(ExecutionPolicy::class)->assertOutboundAllowed();
     }
 

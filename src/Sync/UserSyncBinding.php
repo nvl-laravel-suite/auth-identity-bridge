@@ -6,6 +6,19 @@ namespace IdentityPlatform\Laravel\Sync;
 
 use IdentityPlatform\Laravel\Models\IdentityModel;
 
+/**
+ * Persisted local state and native casts.
+ *
+ * @property string $id
+ * @property int $policy_version
+ * @property string|null $list_cursor
+ * @property string|null $known_cursor
+ * @property bool $list_exhausted
+ * @property bool $known_exhausted
+ * @property int|null $cycle_generation
+ * @property int|null $cycle_policy_version
+ * @property int $progress_version
+ */
 class UserSyncBinding extends IdentityModel
 {
     /** @var list<string> Explicit internal persistence fields; services own authority. */

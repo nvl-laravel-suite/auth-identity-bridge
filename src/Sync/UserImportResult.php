@@ -12,6 +12,10 @@ final readonly class UserImportResult
     /** @param list<UserImportMapping> $mappings */
     private function __construct(public string $bindingHash, public string $issuer, public string $applicationId, public string $clientId, public int $policyVersion, public array $mappings) {}
 
+    /**
+     * @param  array<array-key, mixed>  $data
+     * @param  array<array-key, mixed>  $requestedSources
+     */
     public static function validate(array $data, IdentityConfig $config, array $requestedSources): self
     {
         Contract::require(Contract::keys($data, ['contract', 'issuer', 'applicationId', 'clientId', 'policyVersion', 'mappings'])

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IdentityPlatform\Laravel\Support;
 
+use Closure;
 use IdentityPlatform\Laravel\ApplicationContext\ApplicationContextManager;
 use IdentityPlatform\Laravel\ApplicationContext\ApplicationContextRegistry;
 use IdentityPlatform\Laravel\Auth\AuthStatePresenter;
@@ -141,16 +142,23 @@ final class ConsumerGraph extends Container
         $this->instance(Request::class, $request);
         $resolver = PostContextDestinationResolver::class;
         $binding = $host->getBindings()[$resolver] ?? null;
+        if ($binding !== null) {
+            ContextDefinition::require(is_array($binding) && isset($binding['concrete'], $binding['shared']) && ($binding['concrete'] instanceof Closure || is_string($binding['concrete'])) && is_bool($binding['shared']), 'consumer_dependency_not_supported');
+        }
         $this->bind($resolver, $binding['concrete'] ?? LocalDestinationResolver::class);
         $this->singleton(IdentityAccess::class);
         $this->singleton(IdentityHttp::class, fn () => new IdentityHttp($this->make(IdentityConfig::class)));
         foreach ([IdentityUserResolver::class => ['resolver', EloquentIdentityUserResolver::class], NativeUserFactory::class => ['factory', EloquentNativeUserFactory::class], NativeUserMapper::class => ['mapper', EloquentNativeUserMapper::class]] as $contract => [$key, $default]) {
-            $this->bind($contract, $context->value('users.'.$key) ?? $default);
+            $this->bind($contract, $context->value('users')[$key] ?? $default);
         }
     }
 
+    /** @param array<array-key, mixed> $parameters */
     protected function resolve($abstract, $parameters = [], $raiseEvents = true)
     {
+        if (! is_string($abstract)) {
+            return parent::resolve($abstract, $parameters, $raiseEvents);
+        }
         if ($this->bound($abstract)) {
             return parent::resolve($abstract, $parameters, $raiseEvents);
         }
@@ -174,6 +182,7 @@ final class ConsumerGraph extends Container
         }
         $binding = $this->host->getBindings()[$abstract] ?? null;
         if ($binding !== null) {
+            ContextDefinition::require(is_array($binding) && isset($binding['concrete'], $binding['shared']) && ($binding['concrete'] instanceof Closure || is_string($binding['concrete'])) && is_bool($binding['shared']), 'consumer_dependency_not_supported');
             // Re-run application bindings with this graph, never reuse ambient singletons.
             $this->bind($abstract, $binding['concrete'], $binding['shared']);
         }

@@ -16,6 +16,7 @@ final readonly class ExecutionPolicy
     {
         $graph = ContainerInstances::all($this->app)[ConsumerGraph::class] ?? null;
         if ($graph !== null) {
+            ContextDefinition::require($graph instanceof ConsumerGraph, 'consumer_dependency_not_supported');
             $graph->make(DelegationExecutionGuard::class)->assertQueueAllowed($job);
         }
     }
@@ -24,6 +25,7 @@ final readonly class ExecutionPolicy
     {
         $graph = ContainerInstances::all($this->app)[ConsumerGraph::class] ?? null;
         if ($graph !== null) {
+            ContextDefinition::require($graph instanceof ConsumerGraph, 'consumer_dependency_not_supported');
             $graph->make(DelegationExecutionGuard::class)->assertOutboundAllowed();
         }
     }

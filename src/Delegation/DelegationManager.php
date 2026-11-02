@@ -31,6 +31,9 @@ class DelegationManager
         return $row ? $this->overlays->find($row->id) : null;
     }
 
+    /**
+     * @param  array<string, mixed>  $input
+     */
     public function start(Request $request, array $input): string
     {
         $row = $this->requireSession($request);
@@ -39,7 +42,7 @@ class DelegationManager
             throw new IdentityException('delegation_nested_forbidden', 403);
         }
         $allowed = ['subjectId', 'subjectRoleId', 'operations', 'reason', 'ticketReference', 'expectedPolicyVersion', 'expectedAuthorityVersion'];
-        if (array_diff(array_keys($input), $allowed) || ! Contract::identifier($input['subjectId'] ?? null) || ($input['subjectId'] ?? null) === $row->subject || ! Contract::strings($input['operations'] ?? null, true) || ($input['operations'] ?? []) === []) {
+        if (array_diff(array_keys($input), $allowed) || ! Contract::identifier($input['subjectId'] ?? null) || $input['subjectId'] === $row->subject || ! Contract::strings($input['operations'] ?? null, true) || $input['operations'] === []) {
             throw new IdentityException('delegation_invalid', 422);
         }
         foreach ($input['operations'] as $operation) {
@@ -52,7 +55,7 @@ class DelegationManager
         $state = $this->logins->create($request->session()->getId(), ['session_id' => $row->id, 'source_sid' => $row->sid, 'browser_binding' => $binding, 'verifier' => $verifier, 'context_version' => $nextVersion, 'callback' => $callback], 'delegation');
         $handoff = $this->client->call($request, 'delegation.start', [...$input, 'browserBinding' => $binding, 'callbackUrl' => $callback, 'state' => $state, 'codeChallenge' => rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '='), 'codeChallengeMethod' => 'S256', 'contextVersion' => $nextVersion, 'idempotencyKey' => $this->random()]);
         $end = Contract::date($handoff['expiresAt'] ?? null);
-        Contract::require(Contract::keys($handoff, ['handoffId', 'code', 'state', 'callbackUrl', 'expiresAt']) && Contract::identifier($handoff['handoffId']) && $this->secret($handoff['code']) && $handoff['state'] === $state && $handoff['callbackUrl'] === $callback && $end !== null && $end > microtime(true) && $end <= microtime(true) + 120, 'invalid_delegation_response', 502);
+        Contract::require(Contract::keys($handoff, ['handoffId', 'code', 'state', 'callbackUrl', 'expiresAt']) && Contract::identifier($handoff['handoffId']) && $this->secret($handoff['code']) && $handoff['state'] === $state && $handoff['callbackUrl'] === $callback && $end !== null && is_string($handoff['expiresAt']) && $end > microtime(true) && $end <= microtime(true) + 120, 'invalid_delegation_response', 502);
         $row->getConnection()->transaction(function () use ($row, $input, $binding, $nextVersion, $handoff): void {
             if (! $this->rows->publish($row, ['context_version' => $nextVersion, 'snapshot' => null, 'application_context' => null])) {
                 throw new IdentityException('context_changed', 409);
@@ -66,6 +69,9 @@ class DelegationManager
         return $callback.'?'.http_build_query(['code' => $handoff['code'], 'state' => $state], '', '&', PHP_QUERY_RFC3986);
     }
 
+    /**
+     * @param  array<array-key, string>  $callback
+     */
     public function redeem(Request $request, array $callback): void
     {
         $intent = $this->logins->consume((string) ($callback['state'] ?? ''), $request->session()->getId(), 'delegation');
@@ -80,7 +86,7 @@ class DelegationManager
         $this->requireLocalDeadline($decision, $row);
         $row->getConnection()->transaction(function () use ($row, $overlay, $result, $decision): void {
             $locked = $this->overlays->find($row->id, true);
-            $this->assertCurrent($row, $locked, true);
+            $locked = $this->assertCurrent($row, $locked, true);
             if ($locked->status !== 'pending' || $locked->browser_binding !== $overlay->browser_binding || $locked->expires_at->isPast()) {
                 throw new IdentityException('delegation_binding_changed', 409);
             }
@@ -98,14 +104,15 @@ class DelegationManager
             $this->requireContext($request, $row);
         }
         $overlay = $this->overlays->find($row->id) ?? throw new IdentityException('delegation_unavailable', 403);
-        if ($overlay->status !== 'active' || ! $overlay->handle_vault || $overlay->expires_at->isPast()) {
+        $handleVault = $overlay->handle_vault;
+        if ($overlay->status !== 'active' || ! $handleVault || $overlay->expires_at->isPast()) {
             throw new IdentityException('delegation_unavailable', 403);
         }
         $this->assertCurrent($row, $overlay);
         $binding = hash('sha256', json_encode([spl_object_id($request), $request->method(), $operation, $this->config->bindingHash(),
             $row->id, $row->user_id, $row->subject, $row->sid, $row->context_version, $row->token_generation, $row->selection,
             $overlay->id, $overlay->source_sid, $overlay->context_version, $overlay->browser_binding, $overlay->decision,
-            hash('sha256', $overlay->handle_vault), $overlay->expires_at->toIso8601String()], JSON_THROW_ON_ERROR));
+            hash('sha256', $handleVault), $overlay->expires_at->toIso8601String()], JSON_THROW_ON_ERROR));
         $retained = $request->attributes->get('identity.delegation.check');
         $request->attributes->remove('identity.delegation.check');
         $decision = null;
@@ -173,29 +180,43 @@ class DelegationManager
         }
     }
 
+    /**
+     * @return array{handle: mixed, browserBinding: string, contextVersion: int}
+     */
     public function proof(IdentityDelegation $overlay): array
     {
+        if ($overlay->handle_vault === null) {
+            throw new IdentityException('delegation_unavailable', 403);
+        }
         $handle = $this->vault->open($overlay->handle_vault, 'delegation:'.$overlay->id);
 
         return ['handle' => $handle['handle'], 'browserBinding' => $overlay->browser_binding, 'contextVersion' => $overlay->context_version];
     }
 
+    /**
+     * @return array{write: bool, resource_type: non-empty-string, ...}
+     */
     public function registration(string $operation): array
     {
         $registration = $this->config->value('delegation.operations', [])[$operation] ?? null;
-        if (! is_array($registration) || ! is_bool($registration['write'] ?? null) || ! Contract::identifier($registration['resource_type'] ?? null) || preg_match('/(?:^|\.)(?:security|credentials?|roles?|grants?|clients?|invitations?|global|admin|impersonat|delegat)(?:\.|$)/i', $operation)) {
+        if (! is_array($registration) || preg_match('/(?:^|\.)(?:security|credentials?|roles?|grants?|clients?|invitations?|global|admin|impersonat|delegat)(?:\.|$)/i', $operation)) {
             throw new IdentityException('delegation_operation_forbidden', 403);
         }
 
         return $registration;
     }
 
-    public function assertCurrent(IdentitySession $expected, ?IdentityDelegation $overlay, bool $lockSession = false): void
+    /**
+     * @return IdentityDelegation The same overlay, after source and liveness fences.
+     */
+    public function assertCurrent(IdentitySession $expected, ?IdentityDelegation $overlay, bool $lockSession = false): IdentityDelegation
     {
         $current = $this->rows->find($expected->id, $lockSession);
         if (! $current || ! $overlay || $current->sid !== $overlay->source_sid || $current->sid !== $expected->sid || $current->subject !== $expected->subject || $current->context_version !== $expected->context_version || $current->context_version !== $overlay->context_version || $current->token_generation !== $expected->token_generation || $current->expires_at->isPast() || $current->started_at->addSeconds((int) $this->config->value('local.absolute_seconds', 43200))->isPast() || $current->last_activity_at->addSeconds((int) $this->config->value('local.idle_seconds', 1800))->isPast()) {
             throw new IdentityException('context_changed', 409);
         }
+
+        return $overlay;
     }
 
     public function requireContext(Request $request, IdentitySession $row): void
@@ -214,7 +235,7 @@ class DelegationManager
     private function requireLocalDeadline(DelegationDecision $decision, IdentitySession $row): void
     {
         $end = Contract::date($decision->data['expiresAt']);
-        if ($end > min($row->expires_at->timestamp, $row->started_at->addSeconds((int) $this->config->value('local.absolute_seconds', 43200))->timestamp)) {
+        if ($end > min($row->expires_at->getTimestamp(), $row->started_at->addSeconds((int) $this->config->value('local.absolute_seconds', 43200))->getTimestamp())) {
             throw new IdentityException('invalid_delegation_response', 502);
         }
     }
@@ -224,6 +245,7 @@ class DelegationManager
         return rtrim(strtr(base64_encode(random_bytes(48)), '+/', '-_'), '=');
     }
 
+    /** @phpstan-assert-if-true non-empty-string $value */
     private function secret(mixed $value): bool
     {
         return is_string($value) && preg_match('/^[A-Za-z0-9._~-]{32,512}$/D', $value) === 1;

@@ -35,7 +35,7 @@ final class AuthStatePresenter
             $actor = new IdentityView($source->subject, $profile?->name, $profile?->email, $profile?->picture);
             $effective = $actor;
             $decision = new CurrentDecisionView;
-            $status = $overlay?->status ?? 'none';
+            $status = $overlay->status ?? 'none';
             if ($overlay) {
                 $effective = null;
                 if ($overlay->status === 'active') {
@@ -69,6 +69,9 @@ final class AuthStatePresenter
         }
     }
 
+    /**
+     * @return array<string, mixed>|null
+     */
     private function mode(?IdentityDelegation $overlay): ?array
     {
         // Internal comparison only. Never serialize an overlay, its handle or decision ledger.

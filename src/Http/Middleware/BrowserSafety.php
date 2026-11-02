@@ -8,19 +8,22 @@ use Closure;
 use IdentityPlatform\Laravel\Exceptions\IdentityException;
 use IdentityPlatform\Laravel\Support\IdentityConfig;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class BrowserSafety
 {
     public function __construct(private IdentityConfig $config) {}
 
-    public function handle(Request $request, Closure $next)
+    /** @param Closure(Request): Response $next */
+    public function handle(Request $request, Closure $next): Response
     {
         try {
             if (! in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'], true) && $request->header('Origin') !== $this->config->appOrigin()) {
                 throw new IdentityException('origin_refused', 403);
             }
-            $cookie = preg_quote((string) config('session.cookie'), '/');
-            if (preg_match_all('/(?:^|;\s*)'.$cookie.'=/', (string) $request->server('HTTP_COOKIE')) > 1) {
+            $cookie = preg_quote(config()->string('session.cookie'), '/');
+            $cookieHeader = $request->server('HTTP_COOKIE', '');
+            if (! is_string($cookieHeader) || preg_match_all('/(?:^|;\s*)'.$cookie.'=/', $cookieHeader) > 1) {
                 throw new IdentityException('duplicate_session_cookie', 400);
             }
             $response = $next($request);

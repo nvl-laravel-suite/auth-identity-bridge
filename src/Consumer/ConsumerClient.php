@@ -14,6 +14,7 @@ use IdentityPlatform\Laravel\Support\IdentityConfig;
 use IdentityPlatform\Laravel\Support\IdentityHttp;
 use IdentityPlatform\Laravel\Support\IdentityVault;
 use Illuminate\Http\Request;
+use LogicException;
 
 /** @api */
 class ConsumerClient
@@ -39,6 +40,10 @@ class ConsumerClient
 
     public function __construct(private SessionManager $sessions, private SessionRepository $rows, private IdentityVault $vault, private IdentityConfig $config, private IdentityHttp $http, private OverlayRepository $overlays, private CommandJournal $commands) {}
 
+    /**
+     * @param  array<array-key, mixed>  $input
+     * @return array<array-key, mixed>
+     */
     public function call(Request $request, string $operation, array $input = []): array
     {
         if (! isset(self::PATHS[$operation])) {
@@ -50,10 +55,11 @@ class ConsumerClient
         if (in_array($operation, ManagedContract::READS, true)) {
             $result = $this->managedRead($request, $operation, $input);
             if ($result->status !== 'read') {
-                throw new IdentityException($result->error->code, $result->error->httpStatus());
+                $error = $result->error ?? throw new LogicException('A failed managed read requires its failure.');
+                throw new IdentityException($error->code, $error->httpStatus());
             }
 
-            return $result->data;
+            return $result->data ?? throw new LogicException('A managed read result requires read data.');
         }
         if ($operation === 'operations.status') {
             $input = ManagedContract::input($operation, $input);
@@ -82,10 +88,12 @@ class ConsumerClient
         $cacheHit = $optionRead && isset($cached[$cacheKey]);
         if ($cacheHit) {
             $data = $cached[$cacheKey];
+            Contract::require(is_array($data), 'invalid_consumer_response', 502);
         } else {
             $data = $this->exchange($row, $operation, $input);
             ConsumerContract::validate($operation, $data, $input, $row, $this->config);
             if ($operation === 'operations.status' && in_array($data['operation'] ?? null, ManagedContract::WRITES, true)) {
+                Contract::require(ManagedContract::key($input['idempotencyKey'] ?? null), 'validation_failed', 400);
                 ManagedContract::status($data, $this->commands->forActor($row, $input['idempotencyKey']));
             }
         }
@@ -105,13 +113,18 @@ class ConsumerClient
         return $data;
     }
 
-    /** Shared fixed-origin confidential transport, with exact ordinary actor envelope binding. */
+    /**
+     * Shared fixed-origin confidential transport, with exact ordinary actor envelope binding.
+     *
+     * @param  array<array-key, mixed>  $input
+     * @return array<array-key, mixed>
+     */
     private function exchange(IdentitySession $row, string $operation, array $input): array
     {
         $tokens = $this->vault->open($row->token_vault, 'session:'.$row->id);
         $selection = array_intersect_key($row->selection, array_flip(['organizationId', 'roleId']));
         $wire = $input;
-        if (isset($wire['changes']['socialLinks']) && is_array($wire['changes']['socialLinks'])) {
+        if (is_array($wire['changes'] ?? null) && isset($wire['changes']['socialLinks']) && is_array($wire['changes']['socialLinks'])) {
             $wire['changes']['socialLinks'] = (object) $wire['changes']['socialLinks'];
         }
         $preserveKinds = in_array($operation, [...ManagedContract::READS, ...ManagedContract::WRITES, 'operations.status'], true);
@@ -119,12 +132,24 @@ class ConsumerClient
         Contract::require(Contract::keys($reply, ['contract', 'issuer', 'applicationId', 'clientId', 'subject', 'centralSessionId', 'data'])
             && $reply['contract'] === 'platform-consumer-result.v1' && $reply['issuer'] === $this->config->issuer()
             && $reply['applicationId'] === $this->config->applicationId() && $reply['clientId'] === $this->config->clientId()
-            && $reply['subject'] === $row->subject && $reply['centralSessionId'] === $row->sid && ($preserveKinds ? $reply['data'] instanceof \stdClass : is_array($reply['data'])), 'invalid_consumer_response', 502);
+            && $reply['subject'] === $row->subject && $reply['centralSessionId'] === $row->sid, 'invalid_consumer_response', 502);
 
-        return $preserveKinds ? ManagedContract::jsonData($operation, $reply['data']) : $reply['data'];
+        if ($preserveKinds) {
+            Contract::require($reply['data'] instanceof \stdClass, 'invalid_consumer_response', 502);
+
+            return ManagedContract::jsonData($operation, $reply['data']);
+        }
+        Contract::require(is_array($reply['data']), 'invalid_consumer_response', 502);
+
+        return $reply['data'];
     }
 
-    /** Only an already-admitted action may be reconciled without a browser session. */
+    /**
+     * Only an already-admitted action may be reconciled without a browser session.
+     *
+     * @param  array<array-key, mixed>  $receipt
+     * @return array<array-key, mixed>
+     */
     public function report(array $receipt, string $outcome, ?string $resultCode = null): array
     {
         Contract::require(in_array($outcome, ['committed', 'rejected'], true), 'invalid_outcome', 400);

@@ -27,9 +27,11 @@ final class ConsumerSessionManager extends SessionManager
     protected function createCacheHandler($driver)
     {
         $name = $this->config->get('session.store') ?: $driver;
+        $lifetime = $this->config->get('session.lifetime');
+        ContextDefinition::require(is_string($name) && is_int($lifetime) && $lifetime > 0);
         $repository = $this->container->make('cache')->store($name);
         $isolated = new Repository(clone $repository->getStore());
 
-        return new CacheBasedSessionHandler($isolated, $this->config->get('session.lifetime'));
+        return new CacheBasedSessionHandler($isolated, $lifetime);
     }
 }

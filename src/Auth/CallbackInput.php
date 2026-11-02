@@ -10,6 +10,10 @@ use Illuminate\Http\Request;
 /** Validate raw evidence before PHP's query parser can hide duplicate or array fields. */
 final class CallbackInput
 {
+    /**
+     * @param  array<array-key, mixed>  $callback
+     * @return array<array-key, string>
+     */
     public static function validate(Request $request, array $callback): array
     {
         $query = $request->server('QUERY_STRING', '');

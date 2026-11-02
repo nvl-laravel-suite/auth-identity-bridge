@@ -30,6 +30,9 @@ final readonly class BrowserDestination implements JsonSerializable
         return new self('surface', (new IdentityConfig($target))->url('entry'), $target->name());
     }
 
+    /**
+     * @return array{kind: string, url: string, consumer: string|null}
+     */
     public function jsonSerialize(): array
     {
         return ['kind' => $this->kind, 'url' => $this->url, 'consumer' => $this->consumer];

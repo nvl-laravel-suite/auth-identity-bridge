@@ -16,11 +16,19 @@ class IdentityHttp
 {
     public function __construct(private IdentityConfig|ServiceTargetContext $config) {}
 
+    /**
+     * @param  array<array-key, string>  $headers
+     * @return array<array-key, mixed>
+     */
     public function get(string $path, array $headers = []): array
     {
         return $this->decode($this->request('GET', $path, null, $headers));
     }
 
+    /**
+     * @param  array<array-key, mixed>  $payload
+     * @return array<array-key, mixed>
+     */
     public function json(string $path, array $payload, string $plane = 'browser', bool $preserveObjectKinds = false): array
     {
         $consumer = str_starts_with($path, '/api/consumer/v1/');
@@ -28,16 +36,25 @@ class IdentityHttp
         return $this->decode($this->request('POST', $path, json_encode($payload, JSON_THROW_ON_ERROR), ['Content-Type' => 'application/json'], $plane, $consumer ? 16777216 : null), $consumer, preserveObjectKinds: $preserveObjectKinds);
     }
 
+    /**
+     * @param  array<array-key, mixed>  $payload
+     * @return array<array-key, mixed>
+     */
     public function form(string $path, array $payload, string $plane = 'browser'): array
     {
         return $this->decode($this->request('POST', $path, http_build_query($payload, '', '&', PHP_QUERY_RFC3986), ['Content-Type' => 'application/x-www-form-urlencoded'], $plane));
     }
 
+    /** @return array<array-key, mixed> */
     public function bearer(string $path, string $token): array
     {
         return $this->get($path, ['Authorization' => 'Bearer '.$token]);
     }
 
+    /**
+     * @param  array<array-key, mixed>  $payload
+     * @return array<array-key, mixed>
+     */
     public function sync(string $operation, #[\SensitiveParameter] array $payload): array
     {
         Contract::require(in_array($operation, ['profiles.read', 'profiles.list', 'profiles.import'], true), 'user_sync_operation_invalid', 422);
@@ -55,6 +72,7 @@ class IdentityHttp
         return $this->request($request->getMethod(), (string) $request->getUri(), (string) $request->getBody(), $headers);
     }
 
+    /** @param array<array-key, string> $headers */
     private function request(string $method, string $path, #[\SensitiveParameter] ?string $body = null, array $headers = [], ?string $plane = null, ?int $maximumBytes = null): ResponseInterface
     {
         $origin = $this->config->origin();
@@ -84,7 +102,7 @@ class IdentityHttp
                 throw new IdentityException('rate_limited', 429, $this->retryAfter((string) $result->header($retryHeader)));
             }
 
-            return new PsrResponse($result->status(), $result->headers(), $result->body());
+            return new PsrResponse($result->status(), $result->toPsrResponse()->getHeaders(), $result->body());
         } catch (IdentityException $e) {
             throw $e;
         } catch (Throwable) {
@@ -92,6 +110,7 @@ class IdentityHttp
         }
     }
 
+    /** @return array<array-key, mixed> */
     private function decode(ResponseInterface $response, bool $consumer = false, bool $sync = false, bool $preserveObjectKinds = false): array
     {
         if ($response->getStatusCode() >= 400) {
@@ -101,8 +120,8 @@ class IdentityHttp
             if ($consumer) {
                 try {
                     $body = json_decode((string) $response->getBody(), true, 16, JSON_THROW_ON_ERROR);
-                    $candidate = $body['error']['code'] ?? null;
-                    if (in_array($candidate, ['consumer_profile_field_denied', 'consumer_global_effect_acknowledgement_required', 'consumer_capability_denied', 'mfa_required', 'version_conflict', 'idempotency_conflict', 'operation_pending', 'context_changed', 'consumer_disabled', 'access_inactive', 'session_inactive', 'token_inactive', 'app_administration_denied', 'delegation_authority_required', 'delegation_unavailable', 'delegation_expired', 'rate_limited', 'operation_unavailable', 'consumer_resource_unavailable', 'validation_failed', 'invalid_cursor'], true)) {
+                    $candidate = is_array($body) && is_array($body['error'] ?? null) ? ($body['error']['code'] ?? null) : null;
+                    if (is_string($candidate) && in_array($candidate, ['consumer_profile_field_denied', 'consumer_global_effect_acknowledgement_required', 'consumer_capability_denied', 'mfa_required', 'version_conflict', 'idempotency_conflict', 'operation_pending', 'context_changed', 'consumer_disabled', 'access_inactive', 'session_inactive', 'token_inactive', 'app_administration_denied', 'delegation_authority_required', 'delegation_unavailable', 'delegation_expired', 'rate_limited', 'operation_unavailable', 'consumer_resource_unavailable', 'validation_failed', 'invalid_cursor'], true)) {
                         $code = $candidate;
                     }
                 } catch (Throwable) { /* Only public allowlisted error codes cross this boundary. */
@@ -112,8 +131,8 @@ class IdentityHttp
             if ($sync) {
                 try {
                     $body = json_decode((string) $response->getBody(), true, 16, JSON_THROW_ON_ERROR);
-                    $candidate = $body['error']['code'] ?? null;
-                    if (in_array($candidate, ['consumer_import_email_conflict', 'consumer_import_password_unsupported', 'consumer_import_role_denied', 'consumer_import_metadata_denied', 'consumer_import_disabled', 'consumer_import_snapshot_unavailable', 'consumer_import_unavailable', 'consumer_sync_response_too_large'], true)) {
+                    $candidate = is_array($body) && is_array($body['error'] ?? null) ? ($body['error']['code'] ?? null) : null;
+                    if (is_string($candidate) && in_array($candidate, ['consumer_import_email_conflict', 'consumer_import_password_unsupported', 'consumer_import_role_denied', 'consumer_import_metadata_denied', 'consumer_import_disabled', 'consumer_import_snapshot_unavailable', 'consumer_import_unavailable', 'consumer_sync_response_too_large'], true)) {
                         $code = $candidate;
                     }
                 } catch (Throwable) { /* Public codes only; no upstream body or exception text escapes. */
@@ -121,7 +140,7 @@ class IdentityHttp
                 if ($status === 400) {
                     try {
                         $body = json_decode((string) $response->getBody(), true, 16, JSON_THROW_ON_ERROR);
-                        if (($body['error']['code'] ?? null) === 'consumer_sync_cursor_invalid') {
+                        if (is_array($body) && is_array($body['error'] ?? null) && ($body['error']['code'] ?? null) === 'consumer_sync_cursor_invalid') {
                             $code = 'consumer_sync_cursor_invalid';
                         }
                     } catch (Throwable) { /* Only the exact public cursor rejection enables bounded restart. */

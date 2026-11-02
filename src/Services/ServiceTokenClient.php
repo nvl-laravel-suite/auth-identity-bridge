@@ -9,15 +9,23 @@ use IdentityPlatform\Laravel\Exceptions\IdentityException;
 use IdentityPlatform\Laravel\Support\ExecutionPolicy;
 use IdentityPlatform\Laravel\Support\IdentityHttp;
 use IdentityPlatform\Laravel\Support\ServiceTargetContext;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Psr\Http\Message\ResponseInterface;
 use Throwable;
 
+/**
+ * Independently scoped worker credentials and generation-bound encrypted token cache.
+ *
+ * @phpstan-type CacheRecord array{binding: string, key: string, scopes: non-empty-list<non-empty-string>, generation: non-empty-string, digest: non-empty-string, issued_at: int|float, expires_at: int|float, ...<array-key, mixed>}
+ * @phpstan-type TokenEntry array{binding: string, key: string, scopes: non-empty-list<non-empty-string>, generation: non-empty-string, digest: non-empty-string, issued_at: int|float, expires_at: int|float, token: non-empty-string, ...<array-key, mixed>}
+ */
 final class ServiceTokenClient
 {
     public function __construct(private ServiceTargetContext $config, private IdentityHttp $http) {}
 
+    /** @param array<array-key, mixed> $scopes */
     public function token(array $scopes = []): string
     {
         $this->guard();
@@ -27,7 +35,10 @@ final class ServiceTokenClient
         try {
             $cache = Cache::store($this->config->value('cache_store'));
 
-            return $cache->lock($key.':lock', 30)->block(5, function () use ($cache, $key, $scopes): string {
+            $store = $cache->getStore();
+            Contract::require($store instanceof LockProvider, 'service_token_unavailable', 503);
+
+            $token = $store->lock($key.':lock', 30)->block(5, function () use ($cache, $key, $scopes): string {
                 $this->guard();
                 $entry = $this->entry($cache->get($key), $key, $scopes);
                 if ($entry !== null && $entry['expires_at'] > microtime(true) + 5) {
@@ -43,18 +54,19 @@ final class ServiceTokenClient
                 $this->guard();
                 $started = microtime(true);
                 $result = $this->http->form('/api/service-auth/oauth2/token', ['grant_type' => 'client_credentials', 'resource' => $this->audience(), 'scope' => implode(' ', $scopes)], 'service');
+                $expiresIn = $result['expires_in'] ?? null;
                 Contract::require(array_diff(array_keys($result), ['access_token', 'token_type', 'expires_in', 'expires_at', 'scope']) === []
                     && $this->validToken($result['access_token'] ?? null)
                     && is_string($result['token_type'] ?? null) && strcasecmp($result['token_type'], 'Bearer') === 0
-                    && is_int($result['expires_in'] ?? null) && $result['expires_in'] > 0 && $result['expires_in'] <= 300
                     && is_string($result['scope'] ?? null), 'invalid_service_token_response', 502);
+                Contract::require(is_int($expiresIn) && $expiresIn > 0 && $expiresIn <= 300, 'invalid_service_token_response', 502);
+                $expires = $started + $expiresIn;
                 try {
                     $returned = $this->scopes(explode(' ', $result['scope']));
                 } catch (IdentityException) {
                     throw new IdentityException('invalid_service_token_response', 502);
                 }
                 Contract::require($returned === $scopes, 'invalid_service_token_response', 502);
-                $expires = $started + $result['expires_in'];
                 if (array_key_exists('expires_at', $result)) {
                     Contract::require(is_int($result['expires_at']) && $result['expires_at'] > 0, 'invalid_service_token_response', 502);
                     $expires = min($expires, $result['expires_at']);
@@ -75,10 +87,14 @@ final class ServiceTokenClient
                 }
 
                 $this->guard();
-                Contract::require($expires > microtime(true), 'service_token_expired', 503);
+                $remainingAfterCache = $expires - microtime(true);
+                Contract::require($remainingAfterCache > 0, 'service_token_expired', 503);
 
                 return $result['access_token'];
             });
+            Contract::require(is_string($token), 'service_token_unavailable', 503);
+
+            return $token;
         } catch (IdentityException $error) {
             if (in_array($error->status, [401, 403], true) && $error->errorCode !== 'delegation_outbound_forbidden') {
                 throw new IdentityException('service_authentication_failed', 503);
@@ -102,7 +118,9 @@ final class ServiceTokenClient
             if ($index === null) {
                 return;
             }
-            $cache->lock($index['key'].':lock', 30)->block(5, function () use ($cache, $indexKey, $index, $token): void {
+            $store = $cache->getStore();
+            Contract::require($store instanceof LockProvider, 'service_token_unavailable', 503);
+            $store->lock($index['key'].':lock', 30)->block(5, function () use ($cache, $indexKey, $index, $token): void {
                 $this->guard();
                 $entry = $this->entry($cache->get($index['key']), $index['key'], $index['scopes']);
                 if ($this->matches($entry, $index) && hash_equals($entry['token'], $token)) {
@@ -124,6 +142,7 @@ final class ServiceTokenClient
         }
     }
 
+    /** @param array<array-key, mixed> $scopes */
     public function reject(#[\SensitiveParameter] string $token, array $scopes = []): void
     {
         $this->guard();
@@ -132,7 +151,9 @@ final class ServiceTokenClient
         $key = $this->cacheKey($scopes);
         try {
             $cache = Cache::store($this->config->value('cache_store'));
-            $cache->lock($key.':lock', 30)->block(5, function () use ($cache, $key, $token, $scopes): void {
+            $store = $cache->getStore();
+            Contract::require($store instanceof LockProvider, 'service_token_unavailable', 503);
+            $store->lock($key.':lock', 30)->block(5, function () use ($cache, $key, $token, $scopes): void {
                 $this->guard();
                 $entry = $this->entry($cache->get($key), $key, $scopes);
                 if ($entry === null || ! hash_equals($entry['token'], $token)) {
@@ -152,6 +173,7 @@ final class ServiceTokenClient
         }
     }
 
+    /** @param array<array-key, mixed> $options */
     public function request(string $relativePath, array $options = []): ResponseInterface
     {
         $this->guard();
@@ -164,11 +186,13 @@ final class ServiceTokenClient
         app(ExecutionPolicy::class)->assertOutboundAllowed();
     }
 
+    /** @phpstan-assert-if-true =non-empty-string $token */
     private function validToken(mixed $token): bool
     {
         return is_string($token) && $token !== '' && strlen($token) <= 60000 && preg_match('/^[A-Za-z0-9._~+\/-]+=*$/D', $token) === 1;
     }
 
+    /** @return non-empty-list<non-empty-string> */
     private function scopes(mixed $scopes): array
     {
         Contract::require(is_array($scopes) && $scopes !== [] && count($scopes) <= 250 && Contract::strings($scopes, true), 'service_scope_invalid', 400);
@@ -187,6 +211,7 @@ final class ServiceTokenClient
         return hash('sha256', json_encode([$this->config->issuer(), $this->audience(), $credentials['id'], hash('sha256', $credentials['secret'])], JSON_THROW_ON_ERROR));
     }
 
+    /** @param array<array-key, mixed> $scopes */
     private function cacheKey(array $scopes): string
     {
         return 'identity:service:v2:entry:'.hash('sha256', json_encode([$this->binding(), $scopes], JSON_THROW_ON_ERROR));
@@ -197,6 +222,7 @@ final class ServiceTokenClient
         return 'identity:service:v2:index:'.hash('sha256', $this->binding()."\0".hash('sha256', $token));
     }
 
+    /** @return CacheRecord|null */
     private function record(mixed $ciphertext): ?array
     {
         if (! is_string($ciphertext)) {
@@ -222,6 +248,10 @@ final class ServiceTokenClient
         }
     }
 
+    /**
+     * @param  list<string>  $scopes
+     * @return TokenEntry|null
+     */
     private function entry(mixed $ciphertext, string $key, array $scopes): ?array
     {
         $entry = $this->record($ciphertext);
@@ -232,6 +262,7 @@ final class ServiceTokenClient
         return $entry;
     }
 
+    /** @return CacheRecord|null */
     private function index(mixed $ciphertext, #[\SensitiveParameter] string $token): ?array
     {
         $index = $this->record($ciphertext);
@@ -242,6 +273,13 @@ final class ServiceTokenClient
         return $index;
     }
 
+    /**
+     * @param  TokenEntry|null  $entry
+     * @param  CacheRecord|null  $index
+     *
+     * @phpstan-assert-if-true =TokenEntry $entry
+     * @phpstan-assert-if-true =CacheRecord $index
+     */
     private function matches(?array $entry, ?array $index): bool
     {
         return $entry !== null && $index !== null && $entry['generation'] === $index['generation'] && $entry['key'] === $index['key'] && $entry['digest'] === $index['digest'] && $entry['expires_at'] === $index['expires_at'];

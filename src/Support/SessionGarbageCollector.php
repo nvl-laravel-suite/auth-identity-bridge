@@ -30,10 +30,15 @@ final readonly class SessionGarbageCollector
 
     private function database(int $lifetime): int
     {
-        $query = $this->app->make('db')->connection($this->context->value('session.connection'))->table($this->context->value('session.table'));
+        $table = $this->context->value('session.table');
+        ContextDefinition::require($table !== null);
+        $query = $this->app->make('db')->connection($this->context->value('session.connection'))->table($table);
         $deleted = 0;
         (clone $query)->where('last_activity', '<=', time() - $lifetime)->orderBy('id')->chunkById(100, function ($rows) use ($query, &$deleted): void {
             foreach ($rows as $row) {
+                if (! is_string($row->id) || ! is_string($row->payload)) {
+                    continue;
+                }
                 $payload = base64_decode($row->payload, true);
                 if ($payload === false || ! $this->owns($row->id, $payload)) {
                     continue;
@@ -49,7 +54,9 @@ final readonly class SessionGarbageCollector
     private function files(int $lifetime): int
     {
         $deleted = 0;
-        foreach ($this->app->make('files')->files($this->context->value('session.files')) as $file) {
+        $directory = $this->context->value('session.files');
+        ContextDefinition::require($directory !== null);
+        foreach ($this->app->make('files')->files($directory) as $file) {
             if ($file->isLink() || $file->getMTime() > time() - $lifetime) {
                 continue;
             }

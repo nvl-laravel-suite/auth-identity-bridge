@@ -6,6 +6,7 @@ namespace IdentityPlatform\Laravel\Sync;
 
 use IdentityPlatform\Laravel\Authorization\Contract;
 use IdentityPlatform\Laravel\Support\IdentityConfig;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 class ImportCheckpointRepository
@@ -41,6 +42,9 @@ class ImportCheckpointRepository
         return ImportRun::create(['id' => (string) Str::uuid(), 'binding_hash' => $this->config->bindingHash(), 'consumer_name' => $this->config->context()->name(), 'source_name' => $source, 'source_class' => $class, 'batch_size' => $limit]);
     }
 
+    /**
+     * @param  list<array{id: string, binding_hash: string, source_name: string, source_user_id: string, native_user_id: string, native_type: class-string<Model>, physical_key: string}>  $references
+     */
     public function reserve(ImportRun $run, array $references, ?string $next): ImportPage
     {
         return $run->getConnection()->transaction(function () use ($run, $references, $next): ImportPage {
@@ -80,7 +84,10 @@ class ImportCheckpointRepository
         });
     }
 
-    /** Save only IDs, then request durable fresh work. No response bodies or credentials persist here. */
+    /** Save only IDs, then request durable fresh work. No response bodies or credentials persist here.
+     *
+     * @return array<array-key, UserSyncRequest>
+     */
     public function accepted(ImportRun $run, UserImportResult $result): array
     {
         return $run->getConnection()->transaction(function () use ($run, $result): array {
@@ -98,6 +105,10 @@ class ImportCheckpointRepository
         });
     }
 
+    /**
+     * @param  list<string>  $outcomes
+     * @param  array<array-key, UserSyncRequest>  $work
+     */
     public function finish(ImportRun $run, ImportPage $page, UserImportResult $result, array $outcomes, array $work): void
     {
         $run->getConnection()->transaction(function () use ($run, $page, $result, $outcomes, $work): void {
@@ -136,6 +147,9 @@ class ImportCheckpointRepository
         Contract::require($current->binding_hash === $this->config->bindingHash() && $current->cursor === $expected->cursor && ! $current->exhausted, 'user_import_run_changed', 409);
     }
 
+    /**
+     * @return array{imported: int, associated: int, unresolvedImports: int}
+     */
     public function bindingCounts(): array
     {
         $links = UserImportLink::query()->where('binding_hash', $this->config->bindingHash());
@@ -154,6 +168,9 @@ class ImportCheckpointRepository
         })->count();
     }
 
+    /**
+     * @return array{runId: string, imported: int, associated: int, applied: int, stale: int, missing: int, pending: int, nativePending: int, unresolved: int, failed: int, error: string|null, exhausted: bool, completed: bool}
+     */
     public function summary(ImportRun $run): array
     {
         $run->refresh();

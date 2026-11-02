@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace IdentityPlatform\Laravel\Authorization;
 
-/** Immutable authority returned by AuthorizationClient or ResourceVerifier. */
+/**
+ * Immutable authority returned by a validating authorization/resource/delegation boundary.
+ *
+ * @phpstan-type Decision array{subject: string, expires_at: string, permissions?: list<string>, roles?: list<string>, contract?: string, organization_id?: string|null, selected_role_id?: string|null, role_ids?: list<string>, assurance?: array{central_session_id: string, method: string, verified_at: string}|null, central_session_id?: string|null, ...<string, mixed>}
+ */
 final readonly class Principal
 {
+    /** @param Decision $decision */
     public function __construct(public array $decision) {}
 
     public function subject(): string
@@ -14,21 +19,25 @@ final readonly class Principal
         return $this->decision['subject'];
     }
 
+    /** @return list<string> */
     public function permissions(): array
     {
         return $this->current() ? ($this->decision['permissions'] ?? []) : [];
     }
 
+    /** @return list<string> */
     public function roles(): array
     {
         return $this->current() ? ($this->decision['roles'] ?? []) : [];
     }
 
+    /** @phpstan-impure */
     public function hasPermission(string $permission): bool
     {
         return in_array($permission, $this->permissions(), true);
     }
 
+    /** @phpstan-impure */
     public function hasRole(string $role): bool
     {
         return in_array($role, $this->roles(), true);
@@ -49,10 +58,11 @@ final readonly class Principal
         return $this->decision['organization_id'] ?? null;
     }
 
+    /** @phpstan-impure */
     public function recentMfa(int $maxAgeSeconds = 300): bool
     {
         $assurance = $this->decision['assurance'] ?? null;
-        $verified = is_array($assurance) ? Contract::date($assurance['verified_at'] ?? null) : null;
+        $verified = is_array($assurance) ? Contract::date($assurance['verified_at']) : null;
 
         return $this->current() && $maxAgeSeconds > 0 && ($this->decision['contract'] ?? null) === 'platform-authorization-snapshot.v1'
             && ($assurance['central_session_id'] ?? null) === ($this->decision['central_session_id'] ?? null)
@@ -60,9 +70,10 @@ final readonly class Principal
             && $verified <= microtime(true) && microtime(true) - $verified <= min($maxAgeSeconds, 300);
     }
 
+    /** @phpstan-impure */
     private function current(): bool
     {
-        $expires = Contract::date($this->decision['expires_at'] ?? null);
+        $expires = Contract::date($this->decision['expires_at']);
 
         return $expires !== null && $expires > microtime(true);
     }

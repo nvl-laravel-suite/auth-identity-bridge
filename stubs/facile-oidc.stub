@@ -1,0 +1,33 @@
+<?php
+
+namespace Facile\OpenIDClient\Token;
+
+/** PHPStan counterpart of the vendor's open Psalm array intersections. */
+interface TokenSetInterface
+{
+    /** @return array<string, mixed> */
+    public function getAttributes(): array;
+
+    /** @return array<string, mixed> */
+    public function claims(): array;
+}
+
+final class TokenSet implements TokenSetInterface
+{
+    /** @param array<string, mixed> $data */
+    public static function fromParams(array $data): TokenSetInterface {}
+
+    /** @return array<string, mixed> */
+    public function getAttributes(): array {}
+
+    /** @return array<string, mixed> */
+    public function claims(): array {}
+}
+
+namespace Facile\OpenIDClient\Issuer\Metadata;
+
+final class IssuerMetadata
+{
+    /** @param array{issuer: string, authorization_endpoint: string, jwks_uri: string, ...<array-key, mixed>} $claims */
+    public static function fromArray(array $claims): self {}
+}

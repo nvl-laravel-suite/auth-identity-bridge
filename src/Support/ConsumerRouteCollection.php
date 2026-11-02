@@ -32,8 +32,9 @@ final class ConsumerRouteCollection extends RouteCollection
             if (! $context->hasBrowser() || ! $context->value('routes.enabled')) {
                 continue;
             }
-            $host = strtolower(parse_url($context->appOrigin(), PHP_URL_HOST));
+            $host = strtolower(ContextDefinition::origin($context->appOrigin())['host']);
             $prefix = $context->value('routes.path_prefix');
+            ContextDefinition::require($prefix !== null, 'unknown_consumer_route');
             foreach ($seen[$host] ?? [] as $otherPrefix) {
                 if (ContextDefinition::withinPath($prefix, $otherPrefix) || ContextDefinition::withinPath($otherPrefix, $prefix)) {
                     return true;

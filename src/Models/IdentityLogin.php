@@ -4,6 +4,16 @@ declare(strict_types=1);
 
 namespace IdentityPlatform\Laravel\Models;
 
+use Carbon\CarbonImmutable;
+
+/** Persisted internal projection; never a permission grant.
+ *
+ * @property string $binding_hash
+ * @property string $browser_hash
+ * @property string $intent
+ * @property string $protocol
+ * @property CarbonImmutable $expires_at
+ */
 class IdentityLogin extends IdentityModel
 {
     /** @var list<string> Explicit internal persistence fields; services own authority. */

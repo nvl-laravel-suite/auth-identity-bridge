@@ -1,0 +1,30 @@
+<?php
+
+namespace {
+    /**
+     * The native wall clock advances between calls, including cache writes.
+     *
+     * @phpstan-impure
+     * @return ($as_float is true ? float : string)
+     */
+    function microtime(bool $as_float = false): string|float {}
+}
+
+namespace Psr\Http\Message {
+    interface StreamInterface
+    {
+        /**
+         * PSR-7 reads advance the stream cursor and can reach EOF.
+         *
+         * @phpstan-impure
+         */
+        public function read(int $length): string;
+
+        /**
+         * EOF reflects the current stream state, including preceding reads.
+         *
+         * @phpstan-impure
+         */
+        public function eof(): bool;
+    }
+}

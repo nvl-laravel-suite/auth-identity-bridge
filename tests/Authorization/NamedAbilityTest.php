@@ -22,6 +22,7 @@ use IdentityPlatform\Laravel\Sync\UserSynchronizer;
 use IdentityPlatform\Laravel\Tests\TestCase;
 use IdentityPlatform\Laravel\Users\IdentityUserResolver;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Auth\Access\Events\GateEvaluated;
 use Illuminate\Auth\Access\Response;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Auth\User;
@@ -30,6 +31,7 @@ use Illuminate\Session\ArraySessionHandler;
 use Illuminate\Session\Store;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
@@ -47,6 +49,11 @@ class InterleavedIdentityAccess extends IdentityAccess
 
         return $principal;
     }
+}
+
+enum NumericLocalAbility: int
+{
+    case Dashboard = 7;
 }
 
 class AbilityUser extends User
@@ -156,6 +163,34 @@ final class NamedAbilityTest extends TestCase
         self::assertSame('hidden', trim(Blade::render("@can('documents.update', \$document)\nvisible\n@else\nhidden\n@endcan", ['document' => $document], deleteCachedView: true)));
         $this->expectException(AuthorizationException::class);
         Gate::authorize('documents.update', $document);
+    }
+
+    public function test_owned_gate_evaluation_events_expose_boolean_policy_results(): void
+    {
+        $this->integrate();
+        $results = [];
+        Event::listen(GateEvaluated::class, function (GateEvaluated $event) use (&$results): void {
+            if ($event->ability === 'documents.update') {
+                $results[] = $event->result;
+            }
+        });
+
+        self::assertTrue(Gate::allows('documents.update', new AbilityDocument($this->owner->id)));
+        self::assertFalse(Gate::allows('documents.update', new AbilityDocument($this->owner->id, true)));
+        self::assertSame([true, false], $results);
+    }
+
+    public function test_integer_backed_enum_abilities_keep_host_gate_behavior(): void
+    {
+        $this->integrate();
+        Gate::define(NumericLocalAbility::Dashboard, fn () => true);
+
+        self::assertTrue(Gate::has(NumericLocalAbility::Dashboard));
+        self::assertTrue(Gate::has([NumericLocalAbility::Dashboard]));
+        self::assertTrue(Gate::allows(NumericLocalAbility::Dashboard));
+        self::assertTrue(Gate::allows('7'));
+        self::assertTrue(Gate::inspect(NumericLocalAbility::Dashboard)->allowed());
+        self::assertTrue(Gate::authorize(NumericLocalAbility::Dashboard)->allowed());
     }
 
     public function test_unrelated_local_gate_policy_and_denial_keep_host_behavior(): void

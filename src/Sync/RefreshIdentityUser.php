@@ -19,6 +19,9 @@ class RefreshIdentityUser implements ShouldQueue
 
     public function __construct(public readonly string $requestId) {}
 
+    /**
+     * @return list<int>
+     */
     public function backoff(): array
     {
         return [5, 15, 30, 60, 300, 900, 3600];

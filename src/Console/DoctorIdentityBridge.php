@@ -22,7 +22,7 @@ class DoctorIdentityBridge extends Command
         $valid = true;
         if ($enabled) {
             try {
-                app(ConsumerRegistry::class)->names();
+                app(ConsumerRegistry::class);
                 $code = 'configured';
             } catch (IdentityException $error) {
                 $code = $error->errorCode;

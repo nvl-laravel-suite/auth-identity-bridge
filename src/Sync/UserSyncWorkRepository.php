@@ -27,9 +27,10 @@ class UserSyncWorkRepository
             $this->query()->whereKey($row->id)->increment('generation', 1, ['next_attempt_at' => null]);
         }
 
-        return $this->find($row->id);
+        return $this->query()->where('issuer', $this->config->issuer())->whereKey($row->id)->firstOrFail();
     }
 
+    /** @return ($create is true ? UserSyncRequest : UserSyncRequest|null) */
     public function bindingRequest(bool $create = false): ?UserSyncRequest
     {
         $id = hash('sha256', $this->config->bindingHash()."\0binding-reconcile");
@@ -41,7 +42,7 @@ class UserSyncWorkRepository
             $this->query()->whereKey($id)->increment('generation', 1, ['next_attempt_at' => null]);
         }
 
-        return $this->find($id);
+        return $this->query()->where('issuer', $this->config->issuer())->whereKey($id)->firstOrFail();
     }
 
     public function find(string $id): ?UserSyncRequest
@@ -59,6 +60,9 @@ class UserSyncWorkRepository
         $this->query()->whereKey($row->id)->where('generation', $row->generation)->whereColumn('completed_generation', '<', 'generation')->increment('attempts', 1, ['last_error' => $code, 'next_attempt_at' => now()->addSeconds($delay)]);
     }
 
+    /**
+     * @return array<int, UserSyncRequest>
+     */
     public function pending(int $limit): array
     {
         return $this->query()->whereColumn('completed_generation', '<', 'generation')->where(fn ($q) => $q->whereNull('next_attempt_at')->orWhere('next_attempt_at', '<=', now()))->orderBy('id')->limit($limit)->get()->all();
@@ -74,7 +78,7 @@ class UserSyncWorkRepository
         return (new UserSyncBinding)->getConnection()->transaction(function () use ($expected, $bindingRequest, $requireLease): UserSyncBinding {
             $current = UserSyncBinding::query()->whereKey($this->config->bindingHash())->lockForUpdate()->firstOrFail();
             $this->requireProgress($current, $expected);
-            $generation = $bindingRequest?->generation ?? 0;
+            $generation = $bindingRequest !== null ? $bindingRequest->generation : 0;
             if ($current->cycle_generation !== $generation || $current->cycle_policy_version !== $current->policy_version) {
                 $requireLease();
                 // Unknown legacy coverage or a newer invalidation needs a fresh bounded traversal.
@@ -97,6 +101,9 @@ class UserSyncWorkRepository
         });
     }
 
+    /**
+     * @return array<int, UserSyncRequest>
+     */
     public function known(?string $cursor, int $limit): array
     {
         return $this->query()->where('kind', 'subject')->when($cursor !== null, fn ($q) => $q->where('subject', '>', $cursor))->orderBy('subject')->limit($limit + 1)->get()->all();
@@ -132,6 +139,9 @@ class UserSyncWorkRepository
             'user_sync_cursor_changed', 409);
     }
 
+    /**
+     * @return Builder<UserSyncRequest>
+     */
     private function query(): Builder
     {
         return UserSyncRequest::query()->where('binding_hash', $this->config->bindingHash());

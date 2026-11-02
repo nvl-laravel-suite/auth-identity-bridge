@@ -9,6 +9,7 @@ final class SharedProfile
 {
     public const FIELDS = ['timezone', 'accountType', 'phone', 'organizationName', 'position', 'bio', 'dateOfBirth', 'gender', 'country', 'socialLinks', 'profileCompleted'];
 
+    /** @param array<array-key, mixed> $profile */
     public static function valid(array $profile): bool
     {
         if (array_diff(self::FIELDS, array_keys($profile)) !== []) {

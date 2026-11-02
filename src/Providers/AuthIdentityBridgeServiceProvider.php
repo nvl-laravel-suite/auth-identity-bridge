@@ -6,6 +6,7 @@ namespace IdentityPlatform\Laravel\Providers;
 
 use IdentityPlatform\Laravel\Console\DoctorIdentityBridge;
 use IdentityPlatform\Laravel\IdentityServiceProvider;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Support\ServiceProvider;
 
 /** Registers the independently installable bridge without enabling unconfigured authentication. */
@@ -14,7 +15,7 @@ class AuthIdentityBridgeServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../../config/nvl-auth-identity-bridge.php', 'nvl-auth-identity-bridge');
-        if ($this->app['config']->get('nvl-auth-identity-bridge.enabled', false) === true) {
+        if ($this->app->make(ConfigRepository::class)->get('nvl-auth-identity-bridge.enabled', false) === true) {
             $this->app->register(IdentityServiceProvider::class);
         }
     }

@@ -12,6 +12,10 @@ final class CallbackReceiver
 {
     public function __construct(private IdentityConfig $config, private IdentityHttp $http, private CallbackRepository $repository) {}
 
+    /**
+     * @param  array<array-key, mixed>  $headers
+     * @return array{duplicate: bool, affected: int}
+     */
     public function event(string $rawBody, array $headers): array
     {
         $this->bounded($rawBody);
@@ -20,6 +24,9 @@ final class CallbackReceiver
         return $this->repository->event($event, hash('sha256', $rawBody));
     }
 
+    /**
+     * @return array{duplicate: bool, affected: int}
+     */
     public function logout(string $rawBody): array
     {
         $this->bounded($rawBody);

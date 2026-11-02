@@ -6,9 +6,15 @@ namespace IdentityPlatform\Laravel\Sync;
 
 final readonly class UserImportEntry
 {
+    /**
+     * @param  array<array-key, mixed>  $user
+     */
     public function __construct(#[\SensitiveParameter] private array $user, public int|string $nativeUserId) {}
 
-    /** Credential-bearing data for synchronous import only. Never log or queue this return value. */
+    /** Credential-bearing data for synchronous import only. Never log or queue this return value.
+     *
+     * @return array<array-key, mixed>
+     */
     public function payload(): array
     {
         return $this->user;

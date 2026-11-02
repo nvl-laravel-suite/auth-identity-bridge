@@ -22,12 +22,19 @@ use IdentityPlatform\Laravel\Http\Middleware\SelectConsumer;
 use IdentityPlatform\Laravel\Support\ConsumerGraph;
 use IdentityPlatform\Laravel\Support\ConsumerRegistry;
 use IdentityPlatform\Laravel\Support\ConsumerRouteCollection;
+use IdentityPlatform\Laravel\Support\ContextDefinition;
 use IdentityPlatform\Laravel\Support\ExecutionPolicy;
 use IdentityPlatform\Laravel\Support\ServiceTargetRegistry;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Contracts\Http\Kernel;
+use Illuminate\Contracts\Routing\UrlGenerator;
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Http\Kernel as LaravelKernel;
+use Illuminate\Http\Request;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Queue\Events\JobQueueing;
+use Illuminate\Routing\Router;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Event;
@@ -38,20 +45,36 @@ class IdentityServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/identity.php', 'identity');
-        $this->app->singleton(ConsumerRegistry::class, function ($app) {
-            $stores = $app['config']->get('cache.stores', []);
-            $shared = array_keys(array_filter($stores, fn ($store) => in_array($store['driver'] ?? null, ['database', 'redis', 'memcached', 'dynamodb', 'file'], true)));
+        $this->app->singleton(ConsumerRegistry::class, function (Application $app) {
+            $config = $app->make(ConfigRepository::class);
+            $stores = $config->get('cache.stores', []);
+            $connections = $config->get('database.connections', []);
+            $configuration = $config->get('identity');
+            $defaultConnection = $config->get('database.default');
+            ContextDefinition::require(is_array($stores) && is_array($connections) && is_array($configuration) && is_string($defaultConnection));
+            $shared = $cacheStores = $connectionNames = [];
+            foreach ($stores as $name => $store) {
+                ContextDefinition::require(is_string($name) && is_array($store));
+                $cacheStores[] = $name;
+                if (in_array($store['driver'] ?? null, ['database', 'redis', 'memcached', 'dynamodb', 'file'], true)) {
+                    $shared[] = $name;
+                }
+            }
+            foreach (array_keys($connections) as $name) {
+                ContextDefinition::require(is_string($name));
+                $connectionNames[] = $name;
+            }
 
-            return new ConsumerRegistry($app['config']->get('identity'), $app['config']->get('database.default'), array_keys($app['config']->get('database.connections', [])), $shared, array_keys($stores));
+            return new ConsumerRegistry($configuration, $defaultConnection, $connectionNames, $shared, $cacheStores);
         });
         $this->app->singleton(Identity::class);
         $this->app->singleton(ApplicationContextRegistry::class);
-        $this->app->singleton(ServiceTargetRegistry::class, fn ($app) => $app->make(ConsumerRegistry::class)->serviceTargets());
+        $this->app->singleton(ServiceTargetRegistry::class, fn (Application $app) => $app->make(ConsumerRegistry::class)->serviceTargets());
         $this->app->bind(ConsumerGraph::class, fn () => throw new IdentityException('consumer_selection_required'));
         foreach (ConsumerGraph::SERVICES as $service) {
-            $this->app->bind($service, fn ($app) => $app->make(ConsumerGraph::class)->make($service));
+            $this->app->bind($service, fn (Application $app) => $app->make(ConsumerGraph::class)->make($service));
         }
-        $this->callAfterResolving('url', function ($url): void {
+        $this->callAfterResolving('url', function (UrlGenerator $url): void {
             if ($this->setupCommand()) {
                 return;
             }
@@ -63,12 +86,12 @@ class IdentityServiceProvider extends ServiceProvider
                 }
             }
         });
-        $this->callAfterResolving(Kernel::class, function ($kernel): void {
+        $this->callAfterResolving(Kernel::class, function (LaravelKernel $kernel): void {
             $kernel->prependMiddleware(SelectConsumer::class);
             $kernel->appendMiddlewareToGroup('web', DelegationBoundary::class);
             $kernel->addToMiddlewarePriorityAfter(StartSession::class, DelegationBoundary::class);
         });
-        $this->callAfterResolving(ExceptionHandler::class, function ($handler): void {
+        $this->callAfterResolving(ExceptionHandler::class, function (ExceptionHandler $handler): void {
             // Laravel's routing pipeline renders inner exceptions before outer middleware.
             $handler->renderable(function (IdentityException $error) {
                 $response = response()->json(['error' => $error->errorCode], $error->status)
@@ -93,11 +116,11 @@ class IdentityServiceProvider extends ServiceProvider
             $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
         }
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'identity');
-        $router = $this->app['router'];
+        $router = $this->app->make(Router::class);
         foreach (['safety' => BrowserSafety::class, 'session' => RequireSession::class, 'permission' => Permission::class, 'role' => Role::class, 'organization' => Organization::class, 'mfa' => RecentMfa::class, 'credential' => ApiCredential::class] as $name => $class) {
             $router->aliasMiddleware('identity.'.$name, $class);
         }
-        Auth::extend('identity', function ($app) {
+        Auth::extend('identity', function (Application $app) {
             $guard = new IdentityRequestGuard(function ($request) {
                 try {
                     return app(IdentityAccess::class)->user();
@@ -107,7 +130,7 @@ class IdentityServiceProvider extends ServiceProvider
                     }
                     throw $error;
                 }
-            }, $app['request']);
+            }, $app->make(Request::class));
             $app->refresh('request', $guard, 'setRequest');
 
             return $guard;

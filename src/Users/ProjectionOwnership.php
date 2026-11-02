@@ -27,16 +27,21 @@ final class ProjectionOwnership
 
     public static function physical(Model $user): string
     {
-        return hash('sha256', $user->getConnection()->getName()."\0".$user->getTable()."\0".(string) $user->getKey());
+        $key = $user->getKey();
+        Contract::require(is_string($key) || is_int($key), 'identity_user_invalid', 409);
+
+        return hash('sha256', $user->getConnection()->getName()."\0".$user->getTable()."\0".(string) $key);
     }
 
     public function native(Model $user, IdentityUser $projection, bool $association = false): bool
     {
+        $key = $user->getKey();
+        Contract::require(is_string($key) || is_int($key), 'identity_user_invalid', 409);
         $group = $this->config->value('users.native_group');
         $writer = $group ? $this->registry->get($group['writer'])->bindingHash() : $this->config->bindingHash();
         $physical = self::physical($user);
         // Existing links are immutable; a different model class cannot bypass physical ownership.
-        foreach (IdentityUserLink::query()->where('user_id', (string) $user->getKey())->get() as $link) {
+        foreach (IdentityUserLink::query()->where('user_id', (string) $key)->get() as $link) {
             if (! is_subclass_of($link->user_type, Model::class)) {
                 continue;
             }
@@ -72,6 +77,5 @@ final class ProjectionOwnership
             Contract::require($owner && $owner->writer_binding === $expectedBinding && $owner->epoch === $expectedEpoch, 'identity_projection_owner_fenced', 409);
             throw new IdentityException('identity_projection_handoff_required', 409);
         });
-        throw new IdentityException('identity_projection_handoff_required', 409);
     }
 }

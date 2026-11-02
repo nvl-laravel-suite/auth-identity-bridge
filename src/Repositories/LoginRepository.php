@@ -13,6 +13,7 @@ class LoginRepository
 {
     public function __construct(private IdentityConfig $config, private IdentityVault $vault) {}
 
+    /** @param array<array-key, mixed> $intent */
     public function create(string $browserId, array $intent, string $protocol): string
     {
         $state = bin2hex(random_bytes(32));
@@ -22,6 +23,7 @@ class LoginRepository
         return $state;
     }
 
+    /** @return array<array-key, mixed> */
     public function consume(string $state, string $browserId, string $protocol): array
     {
         if (! preg_match('/^[a-f0-9]{64}$/D', $state)) {

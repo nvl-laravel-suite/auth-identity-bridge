@@ -6,7 +6,17 @@ namespace IdentityPlatform\Laravel\Consumer;
 
 use Illuminate\Database\Eloquent\Model;
 
-/** Private nonsecret recovery journal. Repositories explicitly select the immutable consumer connection. */
+/**
+ * Private nonsecret recovery journal. Repositories explicitly select the immutable consumer connection.
+ *
+ * @property string $id
+ * @property string $binding_hash
+ * @property array<array-key, mixed> $reference
+ * @property string $state
+ * @property array<array-key, mixed>|null $receipt
+ * @property string $refresh
+ * @property string|null $sync_request_id
+ */
 class ConsumerCommand extends Model
 {
     /** @var list<string> Explicit internal persistence fields; services own authority. */
@@ -18,6 +28,7 @@ class ConsumerCommand extends Model
 
     protected $keyType = 'string';
 
+    /** @return array<string, string> */
     protected function casts(): array
     {
         return ['reference' => 'array', 'receipt' => 'array'];

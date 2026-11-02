@@ -85,6 +85,19 @@ class UserSnapshotTest extends TestCase
             && $request->hasHeader('Authorization', 'Basic '.base64_encode('web-1:secret')) && $request->data() === ['subjects' => ['person']]);
     }
 
+    public function test_raw_subject_values_are_rejected_before_transport(): void
+    {
+        foreach ([[[], []], [new \stdClass, new \stdClass]] as $subjects) {
+            try {
+                app(UserSnapshotClient::class)->read($subjects);
+                $this->fail('Malformed subject reached the provider');
+            } catch (IdentityException $error) {
+                $this->assertSame('user_sync_subjects_invalid', $error->errorCode);
+            }
+        }
+        Http::assertNothingSent();
+    }
+
     public static function badBindings(): array
     {
         return [['issuer', 'https://foreign.test/api/auth'], ['applicationId', 'foreign'], ['clientId', 'foreign'], ['policyVersion', 0], ['extra', true]];

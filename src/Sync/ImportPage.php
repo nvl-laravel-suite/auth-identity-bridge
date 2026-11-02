@@ -6,6 +6,14 @@ namespace IdentityPlatform\Laravel\Sync;
 
 use IdentityPlatform\Laravel\Models\IdentityModel;
 
+/**
+ * Persisted local state and native casts.
+ *
+ * @property string $id
+ * @property string $run_id
+ * @property string|null $next_cursor
+ * @property bool $finished
+ */
 class ImportPage extends IdentityModel
 {
     /** @var list<string> Explicit internal persistence fields; services own authority. */

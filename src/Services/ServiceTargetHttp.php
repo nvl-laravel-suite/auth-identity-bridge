@@ -20,6 +20,7 @@ final readonly class ServiceTargetHttp
 {
     public function __construct(private ServiceTargetContext $config) {}
 
+    /** @param array<array-key, mixed> $options */
     public function request(string $relativePath, array $options = []): ResponseInterface
     {
         app(ExecutionPolicy::class)->assertOutboundAllowed();
@@ -40,7 +41,7 @@ final readonly class ServiceTargetHttp
             $token = $tokens->token();
         }
         app(ExecutionPolicy::class)->assertOutboundAllowed();
-        $maximum = min(1048576, (int) $this->config->value('http.max_response_bytes', 131072));
+        $maximum = min(1048576, $this->config->value('http.max_response_bytes', 131072));
         $started = microtime(true);
         try {
             // Capture an isolated pending request, restoring host globals before sending.
@@ -77,7 +78,7 @@ final readonly class ServiceTargetHttp
             }
             Contract::require(microtime(true) - $started < 5, 'transport_unavailable', 503);
 
-            return new Response($response->status(), $response->headers(), $bytes);
+            return new Response($response->status(), $response->toPsrResponse()->getHeaders(), $bytes);
         } catch (IdentityException $error) {
             throw $error;
         } catch (Throwable) {
@@ -114,6 +115,7 @@ final readonly class ServiceTargetHttp
         }
     }
 
+    /** @phpstan-assert array<string, string> $headers */
     private function headers(mixed $headers): void
     {
         Contract::require(is_array($headers), 'invalid_service_request', 400);

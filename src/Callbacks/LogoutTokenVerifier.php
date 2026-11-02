@@ -23,6 +23,9 @@ final class LogoutTokenVerifier
 
     public function __construct(private IdentityConfig $config, private IdentityHttp $http) {}
 
+    /**
+     * @return array{jti: string, sid?: string, sub?: string}
+     */
     public function verify(string $token): array
     {
         try {
@@ -32,7 +35,8 @@ final class LogoutTokenVerifier
                 throw new \UnexpectedValueException;
             }
             $header = json_decode(JWT::urlsafeB64Decode($segments[0]), false, 32, JSON_THROW_ON_ERROR);
-            if (! $header instanceof stdClass || ! in_array($header->alg ?? null, ['EdDSA', 'ES256', 'RS256'], true) ||
+            $algorithm = $header instanceof stdClass ? ($header->alg ?? null) : null;
+            if (! $header instanceof stdClass || ! in_array($algorithm, ['EdDSA', 'ES256', 'RS256'], true) ||
                 ($header->typ ?? null) !== 'logout+jwt' || property_exists($header, 'crit') ||
                 (property_exists($header, 'b64') && $header->b64 !== true) ||
                 (property_exists($header, 'kid') && ! self::identifier($header->kid))) {
@@ -41,7 +45,7 @@ final class LogoutTokenVerifier
         } catch (Throwable) {
             throw new IdentityException('logout_token_invalid', 400);
         }
-        $key = $this->key($header);
+        $key = $this->key($header, $algorithm);
         try {
             try {
                 $claims = JWT::decode($token, $key);
@@ -68,15 +72,22 @@ final class LogoutTokenVerifier
                 throw new \UnexpectedValueException;
             }
 
-            return array_filter([
-                'jti' => $claims->jti, 'sid' => $claims->sid ?? null, 'sub' => $claims->sub ?? null,
-            ], static fn ($value) => $value !== null);
+            $result = ['jti' => $claims->jti];
+            if (self::identifier($claims->sid ?? null)) {
+                $result['sid'] = $claims->sid;
+            }
+            if (self::identifier($claims->sub ?? null)) {
+                $result['sub'] = $claims->sub;
+            }
+
+            return $result;
         } catch (Throwable) {
             throw new IdentityException('logout_token_invalid', 400);
         }
     }
 
-    private function key(stdClass $header): Key
+    /** @param 'EdDSA'|'ES256'|'RS256' $algorithm */
+    private function key(stdClass $header, string $algorithm): Key
     {
         try {
             $provider = new TrustedProviderMetadata($this->config, $this->http);
@@ -86,20 +97,20 @@ final class LogoutTokenVerifier
             }
             $keys = [];
             foreach ($jwks['keys'] as $jwk) {
-                if (! is_array($jwk) || isset($jwk['d']) ||
+                if (isset($jwk['d']) ||
                     (isset($header->kid) && ($jwk['kid'] ?? null) !== $header->kid) ||
-                    (isset($jwk['alg']) && $jwk['alg'] !== $header->alg) ||
+                    (isset($jwk['alg']) && $jwk['alg'] !== $algorithm) ||
                     (isset($jwk['use']) && $jwk['use'] !== 'sig') ||
                     (isset($jwk['key_ops']) && (! is_array($jwk['key_ops']) || ! in_array('verify', $jwk['key_ops'], true)))) {
                     continue;
                 }
-                $compatible = match ($header->alg) {
+                $compatible = match ($algorithm) {
                     'EdDSA' => ($jwk['kty'] ?? null) === 'OKP' && ($jwk['crv'] ?? null) === 'Ed25519',
                     'ES256' => ($jwk['kty'] ?? null) === 'EC' && ($jwk['crv'] ?? null) === 'P-256',
                     'RS256' => ($jwk['kty'] ?? null) === 'RSA',
                 };
                 if ($compatible) {
-                    $keys[] = JWK::parseKey($jwk, $header->alg);
+                    $keys[] = JWK::parseKey($jwk, $algorithm);
                 }
             }
             if (count($keys) !== 1 || ! $keys[0] instanceof Key) {
@@ -117,12 +128,18 @@ final class LogoutTokenVerifier
         }
     }
 
+    /**
+     * @phpstan-assert-if-true non-empty-string $value
+     */
     private static function identifier(mixed $value): bool
     {
         return is_string($value) && $value !== '' && mb_check_encoding($value, 'UTF-8') &&
             strlen(mb_convert_encoding($value, 'UTF-16LE', 'UTF-8')) <= 510 && ! preg_match('/[\x00-\x1f\x7f]/', $value);
     }
 
+    /**
+     * @phpstan-assert-if-true int|float $value
+     */
     private static function number(mixed $value): bool
     {
         return (is_int($value) || is_float($value)) && is_finite((float) $value);

@@ -2,6 +2,12 @@ includes:
     - vendor/larastan/larastan/extension.neon
 parameters:
     level: max
+    databaseMigrationsPath:
+        - database/migrations
     paths:
         - src
+        - tests/NativeAccount.php
     tmpDir: .temp/phpstan
+    stubFiles:
+        - stubs/facile-oidc.stub
+        - stubs/runtime-effects.stub

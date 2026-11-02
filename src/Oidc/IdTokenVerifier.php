@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IdentityPlatform\Laravel\Oidc;
 
 use Facile\JoseVerifier\IdTokenVerifierInterface;
+use Facile\JoseVerifier\TokenVerifierInterface;
 use IdentityPlatform\Laravel\Exceptions\IdentityException;
 
 /**
@@ -14,9 +15,15 @@ use IdentityPlatform\Laravel\Exceptions\IdentityException;
  */
 final class IdTokenVerifier implements IdTokenVerifierInterface
 {
+    /** @var array<string, string|null> */
     private array $hashInputs = [];
 
-    public function __construct(private IdTokenVerifierInterface $verifier, private readonly string $algorithm) {}
+    private TokenVerifierInterface $verifier;
+
+    public function __construct(IdTokenVerifierInterface $verifier, private readonly string $algorithm)
+    {
+        $this->verifier = $verifier;
+    }
 
     public function withAccessToken(?string $accessToken): static
     {
@@ -49,6 +56,7 @@ final class IdTokenVerifier implements IdTokenVerifierInterface
         return $copy;
     }
 
+    /** @return array<string, mixed> */
     public function verify(string $jwt): array
     {
         $claims = $this->verifier->verify($jwt);

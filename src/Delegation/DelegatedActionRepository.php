@@ -12,6 +12,9 @@ class DelegatedActionRepository
 {
     public function __construct(private IdentityConfig $config) {}
 
+    /**
+     * @return Builder<IdentityDelegatedAction>
+     */
     public function query(): Builder
     {
         return IdentityDelegatedAction::query()->where('binding_hash', $this->config->bindingHash());
@@ -24,11 +27,20 @@ class DelegatedActionRepository
         return ($lock ? $query->lockForUpdate() : $query)->first();
     }
 
+    /**
+     * @param  array<string, mixed>  $values
+     */
     public function create(array $values): IdentityDelegatedAction
     {
         return IdentityDelegatedAction::query()->create([...$values, 'binding_hash' => $this->config->bindingHash()]);
     }
 
+    /**
+     * @template TResult
+     *
+     * @param  Closure(): TResult  $work
+     * @return TResult
+     */
     public function transaction(Closure $work): mixed
     {
         return (new IdentityDelegatedAction)->getConnection()->transaction($work);
@@ -42,7 +54,7 @@ class DelegatedActionRepository
     /** @return list<array<string, mixed>> */
     public function forPerson(string $centralSubject): array
     {
-        return $this->query()->where(fn (Builder $query) => $query->where('actor_id', $centralSubject)->orWhere('subject_id', $centralSubject))->latest()->limit(100)->get()->map(fn (IdentityDelegatedAction $action) => [
+        $rows = $this->query()->where(fn (Builder $query) => $query->where('actor_id', $centralSubject)->orWhere('subject_id', $centralSubject))->latest()->limit(100)->get()->map(fn (IdentityDelegatedAction $action) => [
             'operation' => $action->operation, 'outcome' => $action->outcome, 'actor_id' => $action->actor_id,
             'subject_id' => $action->subject_id, 'organization_id' => $action->organization_id,
             'actor_name' => $action->audit['actor_name'] ?? '', 'subject_name' => $action->audit['subject_name'] ?? '',
@@ -50,5 +62,7 @@ class DelegatedActionRepository
             'reason' => $action->audit['reason'], 'ticket_reference' => $action->audit['ticket_reference'],
             'created_at' => $action->created_at->toIso8601String(), 'reported_at' => $action->reported_at?->toIso8601String(),
         ])->all();
+
+        return array_values($rows);
     }
 }

@@ -21,6 +21,9 @@ class ReportDelegatedAction implements ShouldQueue
 
     public function __construct(public readonly string $actionId) {}
 
+    /**
+     * @return list<positive-int>
+     */
     public function backoff(): array
     {
         return [5, 15, 30, 60, 300, 900, 3600];

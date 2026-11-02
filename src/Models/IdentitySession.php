@@ -4,6 +4,27 @@ declare(strict_types=1);
 
 namespace IdentityPlatform\Laravel\Models;
 
+use Carbon\CarbonImmutable;
+
+/**
+ * @phpstan-import-type Snapshot from \IdentityPlatform\Laravel\Authorization\AuthorizationClient
+ *
+ * Persisted internal projection; never a permission grant.
+ *
+ * @property string $binding_hash
+ * @property string|null $user_id
+ * @property string $subject
+ * @property string $sid
+ * @property string $token_vault
+ * @property array{selected?: bool, organizationId?: string|null, roleId?: string|null} $selection
+ * @property Snapshot|null $snapshot
+ * @property array<array-key, mixed>|null $application_context
+ * @property int $context_version
+ * @property int $token_generation
+ * @property CarbonImmutable $started_at
+ * @property CarbonImmutable $last_activity_at
+ * @property CarbonImmutable $expires_at
+ */
 class IdentitySession extends IdentityModel
 {
     /** @var list<string> Explicit internal persistence fields; services own authority. */

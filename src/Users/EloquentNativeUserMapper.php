@@ -42,19 +42,23 @@ class EloquentNativeUserMapper implements NativeUserMapper
         });
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function attributes(Model $user, IdentityUser $projection): array
     {
         $state = UserSyncState::query()->where('binding_hash', $this->config->bindingHash())->where('projection_id', $projection->id)->first();
         $profile = $state?->version > 0 ? $state->profile : $state?->jit_profile;
         $profile = is_array($profile) ? $profile : null;
         $policy = $this->config->value('users.lifecycle_policy', RetainedNativeLifecycle::class);
-        (new $policy)->assertMappable($user, $state?->state ?? 'active');
+        Contract::require($policy !== null, 'identity_user_mapping_invalid', 503);
+        (new $policy)->assertMappable($user, $state->state ?? 'active');
         $definition = new NativeMappingDefinition($this->config->value('users'), $user);
         $facts = $profile ?? [];
         if (array_key_exists('email_verified', $facts)) {
             $facts['emailVerified'] = $facts['email_verified'];
         }
-        $facts['state'] = $state?->state ?? 'active';
+        $facts['state'] = $state->state ?? 'active';
         if ($state?->version > 0 || array_key_exists('picture', $facts)) {
             $facts['picture'] = AvatarUrl::safe($profile['picture'] ?? null);
         }

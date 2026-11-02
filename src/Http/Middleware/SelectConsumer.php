@@ -13,15 +13,19 @@ use IdentityPlatform\Laravel\Support\ConsumerRouteCollection;
 use IdentityPlatform\Laravel\Support\ContainerInstances;
 use IdentityPlatform\Laravel\Support\ContextDefinition;
 use IdentityPlatform\Laravel\Support\FrameworkSessionScope;
-use Illuminate\Contracts\Container\Container;
+use Illuminate\Container\Container;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Router;
+use Symfony\Component\HttpFoundation\Response;
 
 /** Global middleware: trusted selection happens before Router gathers controller middleware. */
 final readonly class SelectConsumer
 {
     public function __construct(private Container $app, private ConsumerRegistry $registry, private Identity $identity, private Router $router, private FrameworkSessionScope $sessions) {}
 
+    /**
+     * @param  Closure(Request): Response  $next
+     */
     public function handle(Request $request, Closure $next): mixed
     {
         if ($this->registry->names() === []) {
@@ -35,10 +39,13 @@ final readonly class SelectConsumer
         $name = $route->defaults['identity_consumer'] ?? null;
         try {
             if ($name !== null) {
+                ContextDefinition::require(is_string($name), 'unknown_consumer_route');
                 $context = $this->registry->get($name);
                 ContextDefinition::require(ContextDefinition::originKey($request->getSchemeAndHttpHost()) === ContextDefinition::originKey($context->appOrigin()), 'unknown_consumer_route');
                 if ($context->hasBrowser()) {
-                    ContextDefinition::require(ContextDefinition::withinPath(ConsumerRegistry::requestPath($request->getPathInfo()), $context->value('routes.path_prefix')), 'unknown_consumer_route');
+                    $prefix = $context->value('routes.path_prefix');
+                    ContextDefinition::require(is_string($prefix), 'unknown_consumer_route');
+                    ContextDefinition::require(ContextDefinition::withinPath(ConsumerRegistry::requestPath($request->getPathInfo()), $prefix), 'unknown_consumer_route');
                     if ($context->value('routes.enabled')) {
                         ContextDefinition::require($this->registry->forOriginAndPath($request->getSchemeAndHttpHost(), $request->getPathInfo()) === $context, 'consumer_route_mismatch');
                     }
@@ -62,7 +69,8 @@ final readonly class SelectConsumer
                 return $this->sessions->run($graph, $request, $next, false);
             }
             $cookie = preg_quote($context->sessionSettings()['cookie'], '/');
-            if (preg_match_all('/(?:^|;\s*)'.$cookie.'=/', (string) $request->server('HTTP_COOKIE')) > 1) {
+            $cookieHeader = $request->server('HTTP_COOKIE', '');
+            if (! is_string($cookieHeader) || preg_match_all('/(?:^|;\s*)'.$cookie.'=/', $cookieHeader) > 1) {
                 throw new IdentityException('duplicate_session_cookie', 400);
             }
 

@@ -7,10 +7,31 @@ namespace IdentityPlatform\Laravel\Tests\Support;
 use IdentityPlatform\Laravel\Exceptions\IdentityException;
 use IdentityPlatform\Laravel\Support\BoundSessionHandler;
 use Illuminate\Session\ArraySessionHandler;
+use Illuminate\Session\ExistenceAwareInterface;
 use PHPUnit\Framework\TestCase;
 
 class BoundSessionHandlerTest extends TestCase
 {
+    public function test_existence_changes_are_forwarded_and_keep_the_bound_handler_fluent(): void
+    {
+        $handler = new class(120) extends ArraySessionHandler implements ExistenceAwareInterface
+        {
+            public bool $exists = false;
+
+            public function setExists($value): self
+            {
+                $this->exists = $value;
+
+                return $this;
+            }
+        };
+        $bound = new BoundSessionHandler($handler, str_repeat('a', 64), false);
+        $this->assertSame($bound, $bound->setExists(true));
+        $this->assertTrue($handler->exists);
+        $this->assertSame($bound, $bound->setExists(false));
+        $this->assertFalse($handler->exists);
+    }
+
     public function test_swapped_php_pointer_cannot_read_overwrite_or_destroy_another_binding(): void
     {
         $this->assertTrue(class_exists(BoundSessionHandler::class), 'Bound framework store is missing');

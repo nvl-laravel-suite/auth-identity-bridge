@@ -35,8 +35,12 @@ class ImportIdentityUsers extends Command
                     throw new IdentityException('user_import_limit_invalid');
                 }
             }
+            $resume = $this->option('resume');
+            if ($resume !== null && ! is_string($resume)) {
+                throw new IdentityException('user_import_resume_invalid');
+            }
             $graph = $identity->consumer($consumer);
-            $result = $graph->make(ImportRunner::class)->run($source, $sources->resolve($source, $graph), $this->option('resume'), (bool) $this->option('dry-run'), (int) $this->option('limit'), (int) $this->option('max-pages'));
+            $result = $graph->make(ImportRunner::class)->run($source, $sources->resolve($source, $graph), $resume, (bool) $this->option('dry-run'), (int) $this->option('limit'), (int) $this->option('max-pages'));
             $this->line(json_encode($result, JSON_THROW_ON_ERROR));
 
             return $result['completed'] || (($result['dryRun'] ?? false) && $result['exhausted']) ? self::SUCCESS : self::FAILURE;

@@ -12,6 +12,7 @@ class SessionRepository
 {
     public function __construct(private IdentityConfig $config) {}
 
+    /** @return Builder<IdentitySession> */
     public function query(): Builder
     {
         return IdentitySession::where('binding_hash', $this->config->bindingHash());
@@ -32,11 +33,13 @@ class SessionRepository
         return $this->query()->whereKey($id)->delete() === 1;
     }
 
+    /** @param array<string, mixed> $data */
     public function create(array $data): IdentitySession
     {
         return IdentitySession::create($data + ['binding_hash' => $this->config->bindingHash()]);
     }
 
+    /** @param array<string, mixed> $values */
     public function publish(IdentitySession $row, array $values): bool
     {
         return $this->query()->whereKey($row->id)->where('context_version', $row->context_version)->where('token_generation', $row->token_generation)->update($values) === 1;
