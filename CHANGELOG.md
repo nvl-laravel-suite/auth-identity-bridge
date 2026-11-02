@@ -17,3 +17,5 @@
 - Reject non-string configured model connections with the existing configuration error before handing them to Eloquent; preserve configured and per-model string connections.
 
 - Qualify the complete bridge at PHPStan max with validated wire/configuration contracts and accurate Eloquent types; retain authorization and expiry fences. Reject malformed cached JWKS, refresh expiry claims and import subjects; preserve bound-session fluent calls and Laravel Gate event semantics.
+
+- Declare the extensions and direct JOSE, URI, Carbon, PSR and HTTP foundation dependencies already used by the bridge, so isolated installs and dependency-boundary checks do not rely on incidental transitive requirements.
