@@ -8,7 +8,11 @@ use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Database\Connection;
 use Throwable;
 
-/** Best-effort notifications. The committed transition never depends on a listener. */
+/**
+ * Best-effort notifications. The committed transition never depends on a listener.
+ *
+ * @internal Dispatcher for lifecycle notifications, not an event payload.
+ */
 final readonly class LifecycleNotifications
 {
     public function __construct(private Dispatcher $events) {}

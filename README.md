@@ -1,36 +1,50 @@
 # NVL Auth Identity Bridge
 
-This is a standalone Laravel 13 / PHP 8.4+ consumer bridge. It is locally integrated; no public package release has been published by this change. For local installation, add this repository entry to the consuming app's Composer manifest, then run `composer require nvl/auth-identity-bridge:^7.0`:
+A standalone Laravel 13 / PHP 8.4+ consumer bridge for Identity Platform OIDC, browser sessions, host-owned native users, authorization, versioned synchronization, governed profile commands and named service targets. It requires neither `nvl/core` nor `nvl/auth`, a provider source checkout or access to the provider database.
 
-```json
-{
-    "type": "path",
-    "url": "/path/to/nvl-laravel-suite/packages/nvl/auth-identity-bridge",
-    "options": {
-        "symlink": true,
-        "versions": {"nvl/auth-identity-bridge": "7.0.0"}
-    }
-}
+The Composer package is `nvl/auth-identity-bridge`; the established PHP namespace remains `IdentityPlatform\Laravel`. The `identity` configuration, public method names, command names and provider wire contracts retain their existing forms. Shared profiles and native users carry facts; current provider decisions and host resource policies determine authority.
+
+## Installation
+
+```sh
+composer require nvl/auth-identity-bridge:^7.0
+php artisan vendor:publish --tag=nvl-auth-identity-bridge-config --no-interaction
 ```
 
-Publish configuration with `php artisan vendor:publish --tag=nvl-auth-identity-bridge-config`. Configure the existing `identity.php` issuer, application, named consumers, native mapping, credentials, shared lock store and session ownership. Set `enabled` to `true` in `config/nvl-auth-identity-bridge.php` only after configuration. Run `php artisan migrate` on the intended consumer database, then `php artisan nvl:auth-identity-bridge:doctor --strict`.
+Composer discovers `IdentityPlatform\Laravel\Providers\AuthIdentityBridgeServiceProvider`. The bridge defaults to disabled, so installation alone does not activate identity routes, guards or authentication middleware. Configure the published `config/identity.php` with the trusted issuer, application, named consumers, native model mapping, separately scoped credentials, shared lock store and session ownership. Secrets belong in the host's private environment or secret manager.
 
-The bridge is disabled by default, so merely installing the suite does not change host authentication or middleware. Enabled requests retain the original strict issuer/client/application/subject/session bindings. The established `IdentityPlatform\Laravel` PHP API and `identity` configuration remain unchanged. It works with a host-owned Authenticatable model and does not require `nvl/auth`. Shared profiles and native users never grant permission authority.
+Choose the migration owner before the first run. To load the unchanged vendor migrations, enable `nvl-auth-identity-bridge.enabled` and leave `nvl-auth-identity-bridge.migrations.enabled` true. Alternatively, publish `nvl-auth-identity-bridge-migrations` once and set the migration flag false before running the application-owned copies. Review the intended `identity.connection` and native connection first; preserve migration filenames, applied history and existing data. Never run both sets of copies.
 
-The suite is the canonical source. The Identity development checkout links to this package; runtime consumers require no provider source/database or suite workbench. Composer discovery registers the bridge provider. The package retains its existing proprietary license; this local addition does not publish a remote release.
+```sh
+php artisan migrate --no-interaction
+php artisan nvl:auth-identity-bridge:doctor --strict
+```
 
-Use `herd php tools/run-package-tests.php auth-identity-bridge` from the suite for the isolated package suite, or `composer --no-plugins verify` from a standalone development checkout with its development dependencies installed. Default tests use isolated SQLite; the existing `phpunit.postgres.xml` remains a separately opted-in PostgreSQL qualification, not a claim about the suite's other database engines.
+The doctor validates local configuration without contacting the provider. A configured result does not qualify an OIDC registration, callback delivery, production cache or deployment. Follow the installed [installation reference](resources/boost/skills/nvl-auth-identity-bridge/references/installation.md) and [upgrade guide](UPGRADING.md) for publication and existing installations. The package uses a proprietary license; see [LICENSE](LICENSE).
 
-See [headless lifecycle](HEADLESS-LIFECYCLE.md), [authorization](AUTHORIZATION.md), [native imports](IMPORTING.md), [managed consumers](CONSUMER-MANAGEMENT.md), [application context](APPLICATION-CONTEXT.md) and [service targets](SERVICE-TARGETS.md).
+## Integration contracts
 
-## Agent integration skill
+| Capability | Contract |
+| --- | --- |
+| Browser login, redirects, context selection and logout | [Headless lifecycle](HEADLESS-LIFECYCLE.md) |
+| Current authority, native policies and scoped impersonation | [Authorization](AUTHORIZATION.md) |
+| Self-service data and reusable host adapters | [Integration contracts](docs/reusable-integration-contracts.md), [profile bootstrap](docs/profile-and-user-bootstrap.md) |
+| Governed target updates and original-command recovery | [Consumer management](CONSUMER-MANAGEMENT.md) |
+| Versioned provider-to-native convergence and signed callbacks | [User synchronization](docs/user-synchronization.md) |
+| Controlled import of existing native users | [Imports](IMPORTING.md) |
+| Remembered host resource filters | [Application context](APPLICATION-CONTEXT.md) |
+| Fixed outbound workers and downstream requests | [Service targets](SERVICE-TARGETS.md) |
+| Local lifecycle and profile notifications | [Events](docs/events.md) |
+| Supported PHP entry points | [API reference](resources/boost/skills/nvl-auth-identity-bridge/references/api.md), [consumer catalog](resources/consumer-api.json) |
 
-Publish the portable skill with `php artisan vendor:publish --tag=nvl-auth-identity-bridge-skills` and invoke `$nvl-auth-identity-bridge`. Its [entrypoint](resources/boost/skills/nvl-auth-identity-bridge/SKILL.md) routes tasks to the installed contracts; its [workflow recipes](resources/boost/skills/nvl-auth-identity-bridge/references/workflows.md) cover data ownership, browser lifecycle, self/managed operations, original-command recovery, versioned native convergence, imports, authorization and scoped impersonation. The skill remains usable after publication without a provider checkout.
+Resolve a trusted named consumer with `Identity::consumer($trustedName, $request)` and obtain services from that graph. Use `Identity::browser()` only on an admitted browser request. Preserve issuer/client/application/subject/session bindings, independent cookies, PKCE/nonce, one-use intents, Origin/CSRF checks, live deadlines and final write fences. Keep the actor distinct from a delegated effective subject. Never associate accounts by email, derive authority from native rows or replay an ambiguous write under a new idempotency key.
 
-## Verification and release boundary
+## Agent integration
 
-The bridge-only source snapshot passed all 1,095 package tests / 4,271 assertions, including 18 model-guard regressions, disabled-host boot, explicit activation and the delayed-response expiry fence. The 19 affected persistence-model files also passed PHPStan at level max. The independent native sample passed 112 tests / 818 assertions with two root-owned opt-in appearance collectors skipped. Those skips are not browser acceptance; the previous owned native HTTPS/HTTP2 invitation journey remains a separate receipt.
+Publish the complete portable skill with `php artisan vendor:publish --tag=nvl-auth-identity-bridge-skills --no-interaction` and invoke `$nvl-auth-identity-bridge`. The [entry point](resources/boost/skills/nvl-auth-identity-bridge/SKILL.md), [usage](resources/boost/skills/nvl-auth-identity-bridge/references/usage.md) and [workflow recipes](resources/boost/skills/nvl-auth-identity-bridge/references/workflows.md) remain usable from the installed package without a provider checkout. Laravel Boost can also discover the packaged skill when installed as a consumer development tool.
 
-The bridge now has strict declarations in its executable PHP, explicit per-model persistence fields and the intended NVL holder attribution. The license remains proprietary. Migration filenames and schema operations are unchanged; declarations were added to their PHP headers. The family validator reports zero bridge violations. The active worktree still reports eight unrelated template-package violations, which this bridge change leaves untouched.
+## Verification
 
-The bridge excludes Symfony MIME versions below 8.1.10 for its Laravel 13 consumers. The native sample was patched from 8.1.7 to 8.1.10 with no other dependency version changes, and its locked Composer audit reports no advisories. Existing consumers should follow [upgrading](UPGRADING.md). Package tests, metadata/conformance checks and dependency audit do not establish full appearance, database-engine contention, external callback delivery or VPS deployment acceptance.
+From the suite source checkout, run `herd php tools/run-package-tests.php auth-identity-bridge --concurrency=1`. In a standalone development checkout with development dependencies installed, run `composer --no-plugins verify`. Default tests use isolated SQLite. `phpunit.postgres.xml` is a separately opted-in PostgreSQL qualification; it does not establish MySQL, MariaDB or production adapter coverage.
+
+The source suite owns release certification; GitHub publishing workflows deliver locally certified artifacts. Test output and release receipts apply to their exact source snapshot. Package tests, metadata checks and dependency audits do not establish genuine provider interoperability, browser acceptance, external callback delivery, database contention or deployment readiness. See [contributing](CONTRIBUTING.md), [security](SECURITY.md) and [changelog](CHANGELOG.md).

@@ -10,7 +10,11 @@ use IdentityPlatform\Laravel\Exceptions\IdentityException;
 use IdentityPlatform\Laravel\Support\IdentityConfig;
 use IdentityPlatform\Laravel\Support\IdentityHttp;
 
-/** @phpstan-import-type Decision from Principal */
+/**
+ * @internal Inbound credential verification is owned by the configured API middleware.
+ *
+ * @phpstan-import-type Decision from Principal
+ */
 final class ResourceVerifier
 {
     public function __construct(private IdentityConfig $config, private IdentityHttp $http) {}

@@ -2,6 +2,7 @@ includes:
     - vendor/larastan/larastan/extension.neon
 parameters:
     level: max
+    phpVersion: 80400
     databaseMigrationsPath:
         - database/migrations
     paths:

@@ -78,7 +78,7 @@
             "/.phpunit*",
             "/auth.json",
             "/composer.lock",
-            "/phpunit.xml*",
+            "/phpunit*.xml*",
             "/tests",
             "/vendor",
             "/.temp",

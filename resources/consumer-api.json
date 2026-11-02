@@ -169,6 +169,19 @@
             "properties": [],
             "constants": []
         },
+        "IdentityPlatform\\Laravel\\Services\\ServiceTokenClient": {
+            "kind": "class",
+            "file": "src/Services/ServiceTokenClient.php",
+            "methods": [
+                "__construct",
+                "reject",
+                "request",
+                "revoke",
+                "token"
+            ],
+            "properties": [],
+            "constants": []
+        },
         "IdentityPlatform\\Laravel\\Services\\ServiceTokenManager": {
             "kind": "class",
             "file": "src/Services/ServiceTokenManager.php",

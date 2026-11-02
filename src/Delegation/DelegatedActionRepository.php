@@ -28,7 +28,7 @@ class DelegatedActionRepository
     }
 
     /**
-     * @param  array<string, mixed>  $values
+     * @param  array<model-property<IdentityDelegatedAction>, mixed>  $values
      */
     public function create(array $values): IdentityDelegatedAction
     {

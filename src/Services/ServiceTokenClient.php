@@ -18,6 +18,8 @@ use Throwable;
 /**
  * Independently scoped worker credentials and generation-bound encrypted token cache.
  *
+ * @api Obtain this target-bound handle through ServiceTokenManager::target().
+ *
  * @phpstan-type CacheRecord array{binding: string, key: string, scopes: non-empty-list<non-empty-string>, generation: non-empty-string, digest: non-empty-string, issued_at: int|float, expires_at: int|float, ...<array-key, mixed>}
  * @phpstan-type TokenEntry array{binding: string, key: string, scopes: non-empty-list<non-empty-string>, generation: non-empty-string, digest: non-empty-string, issued_at: int|float, expires_at: int|float, token: non-empty-string, ...<array-key, mixed>}
  */

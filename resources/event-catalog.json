@@ -1,0 +1,313 @@
+{
+    "schema_version": 1,
+    "package": "nvl/auth-identity-bridge",
+    "documentation": "docs/events.md",
+    "implementation_status": "retained Identity Platform Laravel notification contracts",
+    "events": [
+        {
+            "class": "IdentityPlatform\\Laravel\\Events\\AuthenticatedSessionEstablished",
+            "source": "src/Events/AuthenticatedSessionEstablished.php",
+            "constructor_fields": [
+                {
+                    "name": "consumer",
+                    "type": "string",
+                    "visibility": "public",
+                    "required": true
+                },
+                {
+                    "name": "actorSubject",
+                    "type": "string",
+                    "visibility": "public",
+                    "required": true
+                },
+                {
+                    "name": "contextVersion",
+                    "type": "int",
+                    "visibility": "public",
+                    "required": true
+                }
+            ],
+            "public_fields": [
+                {
+                    "name": "consumer",
+                    "type": "string"
+                },
+                {
+                    "name": "actorSubject",
+                    "type": "string"
+                },
+                {
+                    "name": "contextVersion",
+                    "type": "int"
+                }
+            ],
+            "kind": "immutable_notification",
+            "trigger": "A verified browser session is established.",
+            "aliases": [],
+            "producers": [
+                {
+                    "path": "src/Auth/SessionManager.php",
+                    "trigger": "A verified browser session is established."
+                }
+            ]
+        },
+        {
+            "class": "IdentityPlatform\\Laravel\\Events\\ContextSelected",
+            "source": "src/Events/ContextSelected.php",
+            "constructor_fields": [
+                {
+                    "name": "consumer",
+                    "type": "string",
+                    "visibility": "public",
+                    "required": true
+                },
+                {
+                    "name": "actorSubject",
+                    "type": "string",
+                    "visibility": "public",
+                    "required": true
+                },
+                {
+                    "name": "organizationId",
+                    "type": "?string",
+                    "visibility": "public",
+                    "required": true
+                },
+                {
+                    "name": "roleId",
+                    "type": "?string",
+                    "visibility": "public",
+                    "required": true
+                },
+                {
+                    "name": "contextVersion",
+                    "type": "int",
+                    "visibility": "public",
+                    "required": true
+                }
+            ],
+            "public_fields": [
+                {
+                    "name": "consumer",
+                    "type": "string"
+                },
+                {
+                    "name": "actorSubject",
+                    "type": "string"
+                },
+                {
+                    "name": "organizationId",
+                    "type": "?string"
+                },
+                {
+                    "name": "roleId",
+                    "type": "?string"
+                },
+                {
+                    "name": "contextVersion",
+                    "type": "int"
+                }
+            ],
+            "kind": "immutable_notification",
+            "trigger": "The local organization and role context changes.",
+            "aliases": [],
+            "producers": [
+                {
+                    "path": "src/Auth/SessionManager.php",
+                    "trigger": "The local organization and role context changes."
+                }
+            ]
+        },
+        {
+            "class": "IdentityPlatform\\Laravel\\Events\\DelegationStateChanged",
+            "source": "src/Events/DelegationStateChanged.php",
+            "constructor_fields": [
+                {
+                    "name": "consumer",
+                    "type": "string",
+                    "visibility": "public",
+                    "required": true
+                },
+                {
+                    "name": "actorSubject",
+                    "type": "string",
+                    "visibility": "public",
+                    "required": true
+                },
+                {
+                    "name": "effectiveSubject",
+                    "type": "?string",
+                    "visibility": "public",
+                    "required": true
+                },
+                {
+                    "name": "status",
+                    "type": "string",
+                    "visibility": "public",
+                    "required": true
+                },
+                {
+                    "name": "contextVersion",
+                    "type": "int",
+                    "visibility": "public",
+                    "required": true
+                },
+                {
+                    "name": "expiresAt",
+                    "type": "?string",
+                    "visibility": "public",
+                    "required": true
+                }
+            ],
+            "public_fields": [
+                {
+                    "name": "consumer",
+                    "type": "string"
+                },
+                {
+                    "name": "actorSubject",
+                    "type": "string"
+                },
+                {
+                    "name": "effectiveSubject",
+                    "type": "?string"
+                },
+                {
+                    "name": "status",
+                    "type": "string"
+                },
+                {
+                    "name": "contextVersion",
+                    "type": "int"
+                },
+                {
+                    "name": "expiresAt",
+                    "type": "?string"
+                }
+            ],
+            "kind": "immutable_notification",
+            "trigger": "Delegation becomes pending, active or stopped.",
+            "aliases": [],
+            "producers": [
+                {
+                    "path": "src/Delegation/DelegationManager.php",
+                    "trigger": "Delegation becomes pending, active or stopped."
+                }
+            ]
+        },
+        {
+            "class": "IdentityPlatform\\Laravel\\Events\\LocalSessionEnded",
+            "source": "src/Events/LocalSessionEnded.php",
+            "constructor_fields": [
+                {
+                    "name": "consumer",
+                    "type": "string",
+                    "visibility": "public",
+                    "required": true
+                },
+                {
+                    "name": "actorSubject",
+                    "type": "string",
+                    "visibility": "public",
+                    "required": true
+                },
+                {
+                    "name": "contextVersion",
+                    "type": "int",
+                    "visibility": "public",
+                    "required": true
+                }
+            ],
+            "public_fields": [
+                {
+                    "name": "consumer",
+                    "type": "string"
+                },
+                {
+                    "name": "actorSubject",
+                    "type": "string"
+                },
+                {
+                    "name": "contextVersion",
+                    "type": "int"
+                }
+            ],
+            "kind": "immutable_notification",
+            "trigger": "The owned local session ends.",
+            "aliases": [],
+            "producers": [
+                {
+                    "path": "src/Auth/SessionManager.php",
+                    "trigger": "The owned local session ends."
+                },
+                {
+                    "path": "src/Delegation/DelegationManager.php",
+                    "trigger": "The owned local session ends."
+                },
+                {
+                    "path": "src/Sessions/LocalSessionDirectory.php",
+                    "trigger": "The owned local session ends."
+                }
+            ]
+        },
+        {
+            "class": "IdentityPlatform\\Laravel\\Sync\\ProfileSynchronized",
+            "source": "src/Sync/ProfileSynchronized.php",
+            "constructor_fields": [
+                {
+                    "name": "user",
+                    "type": "IdentityPlatform\\Laravel\\Models\\IdentityUser",
+                    "visibility": "public",
+                    "required": true
+                },
+                {
+                    "name": "created",
+                    "type": "bool",
+                    "visibility": "public",
+                    "required": true
+                }
+            ],
+            "public_fields": [
+                {
+                    "name": "user",
+                    "type": "IdentityPlatform\\Laravel\\Models\\IdentityUser"
+                },
+                {
+                    "name": "created",
+                    "type": "bool"
+                }
+            ],
+            "kind": "model_notification",
+            "trigger": "Verified UserInfo is projected or an authorized versioned snapshot is applied.",
+            "aliases": [],
+            "producers": [
+                {
+                    "path": "src/Sync/UserSynchronizer.php",
+                    "trigger": "Verified UserInfo is projected or an authorized versioned snapshot is applied."
+                },
+                {
+                    "path": "src/Sync/UserSnapshotRepository.php",
+                    "trigger": "Verified UserInfo is projected or an authorized versioned snapshot is applied."
+                }
+            ]
+        }
+    ],
+    "value_types": [],
+    "aliases": [],
+    "publication": {
+        "lifecycle": "LifecycleNotifications captures the graph dispatcher and dispatches after the supplied connection outer commit, or immediately without an active transaction. Listener exceptions are contained.",
+        "profile": "ProfileSynchronized implements Laravel ShouldDispatchAfterCommit and SerializesModels. Snapshot application also registers on the projection connection after commit. Listener failures follow Laravel behavior.",
+        "delivery_limit": "Local callbacks are not a durable outbox and do not promise crash durability or exactly-once delivery."
+    },
+    "security_notes": [
+        "Notifications convey observations, never authorization or account-association authority.",
+        "Lifecycle payloads contain identifiers and transition facts; ProfileSynchronized carries a projection model with personal data and Laravel model restoration semantics.",
+        "No credentials, tokens, session/vault identifiers or private reasons belong in public listener outputs."
+    ],
+    "no_op_semantics": "Distinct lifecycle transitions and authenticated refreshes may emit separate observations. Already applied unchanged or stale versioned snapshots do not emit another application notification.",
+    "notes": [
+        "Catalog schema_version versions this JSON format; the retained notification payloads declare no schemaVersion field or method.",
+        "LifecycleNotifications is an internal dispatcher, not an emitted event.",
+        "No dependency on Nvl\\Support\\Contracts\\DomainEvent is required."
+    ]
+}

@@ -15,7 +15,11 @@ use Illuminate\Support\Facades\Http;
 use Psr\Http\Message\ResponseInterface;
 use Throwable;
 
-/** Fixed downstream bearer transport. Provider worker Basic credentials never enter it. */
+/**
+ * Fixed downstream bearer transport. Provider worker Basic credentials never enter it.
+ *
+ * @internal Use ServiceTokenManager's named target client for outbound calls.
+ */
 final readonly class ServiceTargetHttp
 {
     public function __construct(private ServiceTargetContext $config) {}

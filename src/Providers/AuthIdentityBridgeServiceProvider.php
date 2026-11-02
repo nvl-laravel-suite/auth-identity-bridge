@@ -26,8 +26,10 @@ class AuthIdentityBridgeServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->publishes([
                 __DIR__.'/../../resources/config/nvl-auth-identity-bridge.php' => config_path('nvl-auth-identity-bridge.php'),
-                __DIR__.'/../../config/identity.php' => config_path('identity.php'),
             ], 'nvl-auth-identity-bridge-config');
+            $this->publishes([
+                __DIR__.'/../../config/identity.php' => config_path('identity.php'),
+            ], ['nvl-auth-identity-bridge-config', 'identity-config']);
             $this->publishesMigrations([
                 __DIR__.'/../../database/migrations' => database_path('migrations'),
             ], 'nvl-auth-identity-bridge-migrations');

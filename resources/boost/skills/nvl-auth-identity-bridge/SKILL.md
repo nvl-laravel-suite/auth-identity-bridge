@@ -7,6 +7,8 @@ description: Integrate or troubleshoot a Laravel app using nvl/auth-identity-bri
 
 Build on the existing bridge owners. Keep business models, policies and presentation in the consuming app. Do not introduce a second authentication system, a generic integration framework or business-specific package code.
 
+Use [installation](references/installation.md) for publication and migration ownership, [API](references/api.md) for exact public declarations and [usage](references/usage.md) to select the current integration owner.
+
 ## Establish context first
 
 1. Read the host's instructions and installed bridge version/source. Locate it with `composer show nvl/auth-identity-bridge --path`; in the NVL suite it is `packages/nvl/auth-identity-bridge`. PHP APIs use `IdentityPlatform\Laravel`, independently of the Composer name. No `nvl/core` or `nvl/auth` dependency is required.

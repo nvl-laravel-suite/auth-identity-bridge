@@ -33,7 +33,7 @@ class SessionRepository
         return $this->query()->whereKey($id)->delete() === 1;
     }
 
-    /** @param array<string, mixed> $data */
+    /** @param array<model-property<IdentitySession>, mixed> $data */
     public function create(array $data): IdentitySession
     {
         return IdentitySession::create($data + ['binding_hash' => $this->config->bindingHash()]);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IdentityPlatform\Laravel\Profiles;
 
+use IdentityPlatform\Laravel\Authorization\Contract;
 use IdentityPlatform\Laravel\Exceptions\IdentityException;
 use IdentityPlatform\Laravel\Support\IdentityConfig;
 use IdentityPlatform\Laravel\Users\NativeOwner;
@@ -28,7 +29,7 @@ class LocalProfileRepository
     public function update(Authenticatable $owner, int $expectedVersion, array $fields): LocalProfile
     {
         $limits = ['display_name' => 255, 'avatar' => 2048, 'biography' => 5000, 'locale' => 35, 'timezone' => 100];
-        if ($expectedVersion < 1 || $fields === [] || array_diff(array_keys($fields), [...array_keys($limits), 'preferences'])) {
+        if ($expectedVersion < 1 || $fields === [] || ! Contract::keys($fields, [], [...array_keys($limits), 'preferences'])) {
             throw new IdentityException('profile_invalid', 422);
         }
         foreach ($fields as $key => $value) {

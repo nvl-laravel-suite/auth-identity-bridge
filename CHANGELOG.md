@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [7.0.0] - 2026-11-02
+## [7.0.0] - 2026-11-03
 
 - Add the existing Identity Platform Laravel consumer as the independently installable nvl/auth-identity-bridge package. Preserve its PHP API, migrations and security boundaries.
 - Add opt-in Composer discovery and suite package/test integration.
@@ -19,3 +19,5 @@
 - Qualify the complete bridge at PHPStan max with validated wire/configuration contracts and accurate Eloquent types; retain authorization and expiry fences. Reject malformed cached JWKS, refresh expiry claims and import subjects; preserve bound-session fluent calls and Laravel Gate event semantics.
 
 - Declare the extensions and direct JOSE, URI, Carbon, PSR and HTTP foundation dependencies already used by the bridge, so isolated installs and dependency-boundary checks do not rely on incidental transitive requirements.
+
+- Publish identity-config before authentication is enabled and complete portable API, installation and event references. Keep the standalone Laravel merge behavior, machine protocols and existing schema intact in suite diagnostics and qualification.
