@@ -2,9 +2,18 @@
 
 ## [Unreleased]
 
+## [7.0.1] - 2026-11-05
+
 ### Fixed
 
 - Require patched Symfony HTTP Foundation 7.4.23+/8.1.11+ and reject affected HTTP Kernel and Routing releases in standalone installations, independently of Core's dependency protections.
+
+<!-- NVL GENERATED CHANGES START -->
+### Changed
+
+- require patched Symfony components
+- Merge remote-tracking branch 'origin/main'
+<!-- NVL GENERATED CHANGES END -->
 
 ## [7.0.0] - 2026-11-03
 
