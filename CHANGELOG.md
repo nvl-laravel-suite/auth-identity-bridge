@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Require patched Symfony HTTP Foundation 7.4.23+/8.1.11+ and reject affected HTTP Kernel and Routing releases in standalone installations, independently of Core's dependency protections.
+
 ## [7.0.0] - 2026-11-03
 
 - Add the existing Identity Platform Laravel consumer as the independently installable nvl/auth-identity-bridge package. Preserve its PHP API, migrations and security boundaries.

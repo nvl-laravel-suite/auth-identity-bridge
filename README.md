@@ -13,6 +13,8 @@ php artisan vendor:publish --tag=nvl-auth-identity-bridge-config --no-interactio
 
 Composer discovers `IdentityPlatform\Laravel\Providers\AuthIdentityBridgeServiceProvider`. The bridge defaults to disabled, so installation alone does not activate identity routes, guards or authentication middleware. Configure the published `config/identity.php` with the trusted issuer, application, named consumers, native model mapping, separately scoped credentials, shared lock store and session ownership. Secrets belong in the host's private environment or secret manager.
 
+The standalone manifest requires security-patched Symfony HTTP Foundation and excludes affected HTTP Kernel and Routing releases. The minimum patched versions are 7.4.23 on Symfony 7 and 8.1.11 on Symfony 8.
+
 Choose the migration owner before the first run. To load the unchanged vendor migrations, enable `nvl-auth-identity-bridge.enabled` and leave `nvl-auth-identity-bridge.migrations.enabled` true. Alternatively, publish `nvl-auth-identity-bridge-migrations` once and set the migration flag false before running the application-owned copies. Review the intended `identity.connection` and native connection first; preserve migration filenames, applied history and existing data. Never run both sets of copies.
 
 ```sh
