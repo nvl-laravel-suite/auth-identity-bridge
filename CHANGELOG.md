@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [7.0.2] - 2026-11-11
+
 ### Fixed
 
 - Match retained consumer commands, their receipts, redeemed delegation versions and the selected application context regardless of JSON object key order, so MySQL's native JSON columns no longer turn replays into `idempotency_conflict`, lose commit recovery or clear a valid context.
@@ -14,6 +16,12 @@
 - Refuse a value of the wrong backing type in the `EnumValue` native transform as `native_transform_invalid` instead of raising a `TypeError`.
 - Remove the unreferenced internal `Support\IdentityPsrClient`; the OIDC client already sends every library request through its own bounded transport.
 - Require Laravel 13.30 or later. The package calls `Lock::refresh()` and `Http::withoutGlobalConfiguration()`, which earlier 13.x releases do not provide.
+
+<!-- NVL GENERATED CHANGES START -->
+### Changed
+
+- bound provider responses and correct journal and sync edge cases
+<!-- NVL GENERATED CHANGES END -->
 
 ## [7.0.1] - 2026-11-05
 
