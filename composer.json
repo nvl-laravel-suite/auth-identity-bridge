@@ -17,7 +17,7 @@
         "firebase/php-jwt": "^7.2.1",
         "guzzlehttp/guzzle": "^7.9",
         "guzzlehttp/psr7": "^2.7",
-        "laravel/framework": "^13.0",
+        "laravel/framework": "^13.30",
         "league/uri": "^7.5.1",
         "nesbot/carbon": "^3.8.4",
         "psr/container": "^1.1.1 || ^2.0.1",
@@ -83,7 +83,9 @@
             "/vendor",
             "/.temp",
             "/phpstan.neon*",
-            "/stubs"
+            "/stubs",
+            "/.DS_Store",
+            "/**/.DS_Store"
         ]
     },
     "homepage": "https://github.com/nvl-laravel-suite/auth-identity-bridge",

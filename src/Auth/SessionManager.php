@@ -46,7 +46,7 @@ class SessionManager
     /**
      * @param  array<array-key, mixed>  $callback
      */
-    public function complete(Request $request, array $callback): string
+    public function complete(Request $request, #[\SensitiveParameter] array $callback): string
     {
         $callback = CallbackInput::validate($request, $callback);
         $intent = $this->logins->consume((string) ($callback['state'] ?? ''), $request->session()->getId(), 'login');
@@ -260,7 +260,7 @@ class SessionManager
         return $this->oidc->centralLogoutUrl($state);
     }
 
-    public function finishLogout(Request $request, string $state): void
+    public function finishLogout(Request $request, #[\SensitiveParameter] string $state): void
     {
         $this->logins->consume($state, $request->session()->getId(), 'logout');
     }

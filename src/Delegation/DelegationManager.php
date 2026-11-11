@@ -72,7 +72,7 @@ class DelegationManager
     /**
      * @param  array<array-key, string>  $callback
      */
-    public function redeem(Request $request, array $callback): void
+    public function redeem(Request $request, #[\SensitiveParameter] array $callback): void
     {
         $intent = $this->logins->consume((string) ($callback['state'] ?? ''), $request->session()->getId(), 'delegation');
         $row = $this->requireSession($request);

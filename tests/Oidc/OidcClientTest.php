@@ -208,6 +208,7 @@ final class OidcClientTest extends TestCase
             'null authorized party' => ['azp', null],
             'multiple audiences without azp' => ['aud', ['web-demo', 'other-client']],
             'expired' => ['exp', 1],
+            'issued in the future' => ['iat', 4102444800],
         ];
     }
 
@@ -225,6 +226,46 @@ final class OidcClientTest extends TestCase
         $this->provider->rawIdToken = $encode(['alg' => 'none']).'.'.$encode($this->provider->claims).'.';
         $this->expectException(IdentityException::class);
         $this->exchange();
+    }
+
+    public function test_foreign_signature_algorithms_are_invalid_tokens_not_provider_outages(): void
+    {
+        $encode = static fn (string $value): string => rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
+        $publicKey = (string) base64_decode(strtr($this->app->make(TrustedProviderMetadata::class)->getJwks()['keys'][0]['x'], '-_', '+/'), true);
+        self::assertSame(32, strlen($publicKey));
+        $payload = $encode(json_encode($this->provider->claims, JSON_THROW_ON_ERROR));
+        $symmetric = $encode(json_encode(['alg' => 'HS256', 'kid' => 'test-ed25519', 'typ' => 'JWT'], JSON_THROW_ON_ERROR)).'.'.$payload;
+        $forged = [
+            'HS256 keyed by the client secret' => $symmetric.'.'.$encode(hash_hmac('sha256', $symmetric, 'synthetic-browser-client-secret', true)),
+            'HS256 keyed by the published public key' => $symmetric.'.'.$encode(hash_hmac('sha256', $symmetric, $publicKey, true)),
+            'unsigned' => $encode(json_encode(['alg' => 'none', 'typ' => 'JWT'], JSON_THROW_ON_ERROR)).'.'.$payload.'.',
+            'headerless' => 'not-a-header.'.$payload.'.',
+        ];
+        foreach ($forged as $name => $token) {
+            $this->provider->rawIdToken = $token;
+            try {
+                $this->exchange();
+                self::fail($name.' was accepted for an asymmetric client');
+            } catch (IdentityException $error) {
+                self::assertSame('oidc_token_invalid', $error->errorCode, $name);
+                self::assertSame(401, $error->status, $name);
+            }
+        }
+    }
+
+    public function test_unknown_key_id_refetches_keys_once_within_the_refresh_window(): void
+    {
+        $this->provider->rawIdToken = $this->provider->token($this->provider->claims, header: ['kid' => 'rotated-away']);
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            try {
+                $this->exchange();
+                self::fail('A token for an unpublished key was accepted');
+            } catch (IdentityException $error) {
+                self::assertSame('oidc_token_invalid', $error->errorCode);
+            }
+        }
+
+        self::assertCount(2, array_filter($this->provider->requests, static fn ($request): bool => $request->url() === ProviderFixture::ISSUER.'/jwks'));
     }
 
     public function test_exchange_requires_actual_id_token(): void

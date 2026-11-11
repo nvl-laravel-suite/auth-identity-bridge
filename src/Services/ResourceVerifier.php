@@ -19,7 +19,7 @@ final class ResourceVerifier
 {
     public function __construct(private IdentityConfig $config, private IdentityHttp $http) {}
 
-    public function verify(string $kind, string $credential, ?string $organizationId = null): Principal
+    public function verify(string $kind, #[\SensitiveParameter] string $credential, ?string $organizationId = null): Principal
     {
         Contract::require($credential !== '' && strlen($credential) <= 60000, 'credential_inactive');
         Contract::require($organizationId === null || Contract::identifier($organizationId), 'credential_inactive');
@@ -68,7 +68,7 @@ final class ResourceVerifier
         }
     }
 
-    private function human(string $token): Principal
+    private function human(#[\SensitiveParameter] string $token): Principal
     {
         Contract::require(strlen($token) <= 8192, 'token_inactive');
         $started = microtime(true);

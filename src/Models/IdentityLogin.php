@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace IdentityPlatform\Laravel\Models;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\MassPrunable;
 
 /** Persisted internal projection; never a permission grant.
  *
@@ -16,6 +18,8 @@ use Carbon\CarbonImmutable;
  */
 class IdentityLogin extends IdentityModel
 {
+    use MassPrunable;
+
     /** @var list<string> Explicit internal persistence fields; services own authority. */
     protected $fillable = ['id', 'binding_hash', 'browser_hash', 'intent', 'protocol', 'expires_at'];
 
@@ -26,5 +30,15 @@ class IdentityLogin extends IdentityModel
     protected function casts(): array
     {
         return ['expires_at' => 'immutable_datetime'];
+    }
+
+    /**
+     * Abandoned transactions past their deadline; redemption already refuses them.
+     *
+     * @return Builder<static>
+     */
+    public function prunable(): Builder
+    {
+        return static::query()->where('expires_at', '<=', now());
     }
 }

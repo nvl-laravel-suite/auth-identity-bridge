@@ -20,7 +20,7 @@ final class AuthorizationClient
     public function __construct(private IdentityConfig $config, private IdentityHttp $http) {}
 
     /** @return Contexts */
-    public function contexts(string $token, string $subject, string $sid): array
+    public function contexts(#[\SensitiveParameter] string $token, string $subject, string $sid): array
     {
         $this->requestInput($token, $subject, $sid);
         $data = $this->http->json('/api/authorization/contexts', ['token' => $token]);
@@ -33,7 +33,7 @@ final class AuthorizationClient
      * @param  array<array-key, mixed>  $selection
      * @return Snapshot
      */
-    public function snapshot(string $token, string $subject, string $sid, array $selection = []): array
+    public function snapshot(#[\SensitiveParameter] string $token, string $subject, string $sid, array $selection = []): array
     {
         $this->requestInput($token, $subject, $sid);
         $this->selection($selection);
@@ -43,7 +43,7 @@ final class AuthorizationClient
         return $data;
     }
 
-    private function requestInput(string $token, string $subject, string $sid): void
+    private function requestInput(#[\SensitiveParameter] string $token, string $subject, string $sid): void
     {
         Contract::require($token !== '' && strlen($token) <= 8192 && Contract::identifier($subject) && Contract::identifier($sid));
     }

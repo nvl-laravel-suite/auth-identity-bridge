@@ -45,7 +45,7 @@ final readonly class DelegationDecision
             && array_diff($data['operations'], $expected['operations']) === [] && is_array($data['versions'])
             && is_string($data['reason']) && is_string($data['ticketReference']), 'invalid_delegation_response', 502);
         if (isset($expected['delegationId'])) {
-            Contract::require($data['delegationId'] === $expected['delegationId'] && $data['versions'] === $expected['versions']
+            Contract::require($data['delegationId'] === $expected['delegationId'] && Contract::same($data['versions'], $expected['versions'])
                 && $data['startedAt'] === $expected['startedAt'] && $data['expiresAt'] === $expected['expiresAt']
                 && $data['permissions'] === $expected['permissions'], 'invalid_delegation_response', 502);
         }

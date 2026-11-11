@@ -13,7 +13,7 @@ class IdentityVault
     public function __construct(private IdentityConfig $config) {}
 
     /** @param array<array-key, mixed> $payload */
-    public function seal(array $payload, string $purpose): string
+    public function seal(#[\SensitiveParameter] array $payload, string $purpose): string
     {
         return Crypt::encryptString(json_encode(['binding' => $this->config->bindingHash(), 'purpose' => $purpose, 'payload' => $payload], JSON_THROW_ON_ERROR));
     }

@@ -20,7 +20,7 @@ class IdentityHttp
      * @param  array<array-key, string>  $headers
      * @return array<array-key, mixed>
      */
-    public function get(string $path, array $headers = []): array
+    public function get(string $path, #[\SensitiveParameter] array $headers = []): array
     {
         return $this->decode($this->request('GET', $path, null, $headers));
     }
@@ -29,7 +29,7 @@ class IdentityHttp
      * @param  array<array-key, mixed>  $payload
      * @return array<array-key, mixed>
      */
-    public function json(string $path, array $payload, string $plane = 'browser', bool $preserveObjectKinds = false): array
+    public function json(string $path, #[\SensitiveParameter] array $payload, string $plane = 'browser', bool $preserveObjectKinds = false): array
     {
         $consumer = str_starts_with($path, '/api/consumer/v1/');
 
@@ -40,13 +40,13 @@ class IdentityHttp
      * @param  array<array-key, mixed>  $payload
      * @return array<array-key, mixed>
      */
-    public function form(string $path, array $payload, string $plane = 'browser'): array
+    public function form(string $path, #[\SensitiveParameter] array $payload, string $plane = 'browser'): array
     {
         return $this->decode($this->request('POST', $path, http_build_query($payload, '', '&', PHP_QUERY_RFC3986), ['Content-Type' => 'application/x-www-form-urlencoded'], $plane));
     }
 
     /** @return array<array-key, mixed> */
-    public function bearer(string $path, string $token): array
+    public function bearer(string $path, #[\SensitiveParameter] string $token): array
     {
         return $this->get($path, ['Authorization' => 'Bearer '.$token]);
     }
@@ -73,24 +73,35 @@ class IdentityHttp
     }
 
     /** @param array<array-key, string> $headers */
-    private function request(string $method, string $path, #[\SensitiveParameter] ?string $body = null, array $headers = [], ?string $plane = null, ?int $maximumBytes = null): ResponseInterface
+    private function request(string $method, string $path, #[\SensitiveParameter] ?string $body = null, #[\SensitiveParameter] array $headers = [], ?string $plane = null, ?int $maximumBytes = null): ResponseInterface
     {
         $origin = $this->config->origin();
         $url = str_starts_with($path, '/') && ! str_starts_with($path, '//') ? $origin.$path : $path;
         if (! str_starts_with($url, $origin.'/') || preg_match('/[\x00-\x20\x7f\\\\]/', $url) || parse_url($url, PHP_URL_FRAGMENT) !== null || parse_url($url, PHP_URL_USER) !== null) {
             throw new IdentityException('untrusted_endpoint');
         }
+        $maximum = $maximumBytes ?? (int) $this->config->value('http.max_response_bytes', 131072);
         try {
-            $pending = $this->config instanceof ServiceTargetContext
-                ? Http::withoutGlobalConfiguration(fn () => Http::createPendingRequest())
-                : Http::createPendingRequest();
-            $client = $pending->acceptJson()->withHeaders($headers)->timeout(5)->connectTimeout(3)->withoutRedirecting()->withOptions(['cookies' => false, 'verify' => $this->config->value('http.ca_bundle') ?: true, 'http_errors' => false]);
+            // Host-wide middleware and options never retry, redirect or re-authenticate a provider request.
+            $pending = Http::withoutGlobalConfiguration(fn () => Http::createPendingRequest());
+            $client = $pending->acceptJson()->withHeaders($headers)->timeout(5)->connectTimeout(3)->withoutRedirecting()->withOptions([
+                'cookies' => false,
+                'verify' => $this->config->value('http.ca_bundle') ?: true,
+                'http_errors' => false,
+                'on_headers' => function (ResponseInterface $response) use ($maximum): void {
+                    $length = $response->getHeaderLine('Content-Length');
+                    Contract::require($length === '' || (ctype_digit($length) && (float) $length <= $maximum), 'response_too_large', 502);
+                },
+                'progress' => function (mixed $total, mixed $received) use ($maximum): void {
+                    Contract::require($received <= $maximum, 'response_too_large', 502);
+                },
+            ]);
             if ($plane !== null) {
                 $c = $this->config instanceof ServiceTargetContext ? ($plane === 'service' ? $this->config->credentials() : throw new IdentityException('invalid_credential_plane')) : $this->config->credentials($plane);
                 $client = $client->withBasicAuth($c['id'], $c['secret']);
             }
             $result = $client->send($method, $url, $body === null ? [] : ['body' => $body]);
-            if (strlen($result->body()) > ($maximumBytes ?? (int) $this->config->value('http.max_response_bytes', 131072))) {
+            if (strlen($result->body()) > $maximum) {
                 throw new IdentityException('response_too_large', 502);
             }
             if ($result->status() >= 300 && $result->status() < 400) {
@@ -105,7 +116,13 @@ class IdentityHttp
             return new PsrResponse($result->status(), $result->toPsrResponse()->getHeaders(), $result->body());
         } catch (IdentityException $e) {
             throw $e;
-        } catch (Throwable) {
+        } catch (Throwable $error) {
+            // The HTTP client wraps a refusal raised while the response headers arrive.
+            while ($error = $error->getPrevious()) {
+                if ($error instanceof IdentityException) {
+                    throw $error;
+                }
+            }
             throw new IdentityException('transport_unavailable');
         }
     }

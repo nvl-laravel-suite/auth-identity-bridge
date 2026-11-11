@@ -222,6 +222,29 @@ class DelegationManagerTest extends TestCase
         });
     }
 
+    public function test_refused_admission_keeps_its_reporting_capability_out_of_the_stack_trace(): void
+    {
+        $capability = 'synthetic-reporting-capability-that-must-not-be-traced';
+        $runner = $this->actions(fn (array $reply): array => [...$reply, 'receiptId' => '', 'reportingCapability' => $capability]);
+        $previous = ini_set('zend.exception_ignore_args', '0');
+        try {
+            $this->runAction($runner);
+            $this->fail('An invalid admission receipt was accepted');
+        } catch (IdentityException $error) {
+            $this->assertSame('invalid_delegation_admission', $error->errorCode);
+            $arguments = [];
+            $trace = $error->getTrace();
+            array_walk_recursive($trace, function (mixed $value) use (&$arguments): void {
+                if (is_string($value)) {
+                    $arguments[] = $value;
+                }
+            });
+            $this->assertStringNotContainsString($capability, implode("\n", $arguments));
+        } finally {
+            ini_set('zend.exception_ignore_args', (string) $previous);
+        }
+    }
+
     public function test_delegated_mutation_audit_and_narrow_reporting_outbox_commit_together(): void
     {
         $runner = $this->actions();

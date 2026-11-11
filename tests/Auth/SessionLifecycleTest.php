@@ -284,6 +284,29 @@ class SessionLifecycleTest extends TestCase
         }
     }
 
+    public function test_refresh_lock_is_released_when_the_provider_fails(): void
+    {
+        $request = $this->browser();
+        $manager = $this->login($request);
+        $row = $this->row($request);
+        $vault = app(IdentityVault::class);
+        $tokens = $vault->open($row->token_vault, 'session:'.$row->id);
+        $tokens['expires_at'] = time() - 1;
+        $row->update(['token_vault' => $vault->seal($tokens, 'session:'.$row->id)]);
+        $this->provider->tokenStatus = 503;
+        try {
+            $manager->current($request);
+            $this->fail('Unavailable provider refreshed a session');
+        } catch (IdentityException $error) {
+            $this->assertSame(503, $error->status);
+            $this->assertSame(1, $row->fresh()->token_generation);
+        }
+        $this->provider->tokenStatus = 200;
+
+        // A leaked 60-second lease would refuse this request as session_busy.
+        $this->assertSame(2, $manager->current($request)?->token_generation);
+    }
+
     public function test_profile_hook_cannot_publish_refreshed_tokens_after_lease_expires(): void
     {
         $request = $this->browser();

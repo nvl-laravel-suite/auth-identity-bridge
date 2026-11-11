@@ -31,7 +31,7 @@ class CommandJournal
         return $this->model()->getConnection()->transaction(function () use ($reference) {
             $id = $this->id($reference);
             $row = $this->query()->createOrFirst(['id' => $id], ['binding_hash' => $this->config->bindingHash(), 'reference' => $reference]);
-            Contract::require($row->reference === $reference, 'idempotency_conflict', 409);
+            Contract::require(Contract::same($row->reference, $reference), 'idempotency_conflict', 409);
 
             return $row;
         });
@@ -42,7 +42,7 @@ class CommandJournal
     {
         $this->validate($reference);
         $row = $this->query()->find($this->id($reference));
-        Contract::require($row !== null && $row->reference === $reference, 'invalid_command_reference', 409);
+        Contract::require($row !== null && Contract::same($row->reference, $reference), 'invalid_command_reference', 409);
 
         return $row;
     }
@@ -79,7 +79,7 @@ class CommandJournal
 
         return $this->model()->getConnection()->transaction(function () use ($reference, $receipt) {
             $row = $this->query()->whereKey($this->original($reference)->id)->lockForUpdate()->firstOrFail();
-            Contract::require($row->receipt === null || $row->receipt === $receipt, 'invalid_command_reference', 409);
+            Contract::require($row->receipt === null || Contract::same($row->receipt, $receipt), 'invalid_command_reference', 409);
             $row->update(['state' => 'committed', 'receipt' => $receipt]);
 
             return $row;

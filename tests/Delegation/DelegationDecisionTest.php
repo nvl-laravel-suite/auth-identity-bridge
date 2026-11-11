@@ -7,6 +7,7 @@ use IdentityPlatform\Laravel\Delegation\IdentityDelegation;
 use IdentityPlatform\Laravel\Exceptions\IdentityException;
 use IdentityPlatform\Laravel\Models\IdentitySession;
 use IdentityPlatform\Laravel\Support\IdentityConfig;
+use IdentityPlatform\Laravel\Tests\Support\NativeJsonOrder;
 use IdentityPlatform\Laravel\Tests\TestCase;
 
 class DelegationDecisionTest extends TestCase
@@ -60,5 +61,19 @@ class DelegationDecisionTest extends TestCase
         $data['subject']['assurance'] = $data['actor']['assurance'];
         $this->expectException(IdentityException::class);
         $this->validate($data);
+    }
+
+    public function test_redeemed_versions_match_after_native_json_reordering(): void
+    {
+        $data = [...$this->decision(), 'versions' => ['authority' => 1, 'policy' => 2]];
+        $row = new IdentitySession(['subject' => 'operator-1', 'sid' => 'sid-1', 'selection' => ['selected' => true], 'context_version' => 3]);
+        $stored = NativeJsonOrder::normalize(DelegationDecision::validate($data, $row, new IdentityDelegation(['source_sid' => 'sid-1', 'context_version' => 3, 'decision' => ['subject' => ['id' => 'subject-1'], 'organizationId' => null, 'roleId' => null, 'operations' => ['documents.update']]]), app(IdentityConfig::class))->data);
+        self::assertSame(['policy', 'authority'], array_keys($stored['versions']));
+        $overlay = new IdentityDelegation(['source_sid' => 'sid-1', 'context_version' => 3, 'decision' => $stored]);
+
+        self::assertSame('mode-1', DelegationDecision::validate($data, $row, $overlay, app(IdentityConfig::class))->data['delegationId']);
+
+        $this->expectExceptionObject(new IdentityException('invalid_delegation_response', 502));
+        DelegationDecision::validate([...$data, 'versions' => ['authority' => 1, 'policy' => 3]], $row, $overlay, app(IdentityConfig::class));
     }
 }

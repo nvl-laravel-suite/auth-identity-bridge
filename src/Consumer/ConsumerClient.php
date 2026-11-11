@@ -44,7 +44,7 @@ class ConsumerClient
      * @param  array<array-key, mixed>  $input
      * @return array<array-key, mixed>
      */
-    public function call(Request $request, string $operation, array $input = []): array
+    public function call(Request $request, string $operation, #[\SensitiveParameter] array $input = []): array
     {
         if (! isset(self::PATHS[$operation])) {
             throw new IdentityException('unknown_consumer_operation', 400);
@@ -119,7 +119,7 @@ class ConsumerClient
      * @param  array<array-key, mixed>  $input
      * @return array<array-key, mixed>
      */
-    private function exchange(IdentitySession $row, string $operation, array $input): array
+    private function exchange(IdentitySession $row, string $operation, #[\SensitiveParameter] array $input): array
     {
         $tokens = $this->vault->open($row->token_vault, 'session:'.$row->id);
         $selection = array_intersect_key($row->selection, array_flip(['organizationId', 'roleId']));
@@ -150,7 +150,7 @@ class ConsumerClient
      * @param  array<array-key, mixed>  $receipt
      * @return array<array-key, mixed>
      */
-    public function report(array $receipt, string $outcome, ?string $resultCode = null): array
+    public function report(#[\SensitiveParameter] array $receipt, string $outcome, ?string $resultCode = null): array
     {
         Contract::require(in_array($outcome, ['committed', 'rejected'], true), 'invalid_outcome', 400);
         $input = array_intersect_key($receipt, array_flip(['receiptId', 'reportingCapability', 'commandDigest']));

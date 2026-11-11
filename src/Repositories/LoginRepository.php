@@ -14,7 +14,7 @@ class LoginRepository
     public function __construct(private IdentityConfig $config, private IdentityVault $vault) {}
 
     /** @param array<array-key, mixed> $intent */
-    public function create(string $browserId, array $intent, string $protocol): string
+    public function create(#[\SensitiveParameter] string $browserId, #[\SensitiveParameter] array $intent, string $protocol): string
     {
         $state = bin2hex(random_bytes(32));
         $id = hash('sha256', $state);
@@ -24,7 +24,7 @@ class LoginRepository
     }
 
     /** @return array<array-key, mixed> */
-    public function consume(string $state, string $browserId, string $protocol): array
+    public function consume(#[\SensitiveParameter] string $state, #[\SensitiveParameter] string $browserId, string $protocol): array
     {
         if (! preg_match('/^[a-f0-9]{64}$/D', $state)) {
             throw new IdentityException('invalid_login_state', 401);

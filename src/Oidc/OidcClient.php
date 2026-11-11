@@ -93,7 +93,7 @@ final class OidcClient
     }
 
     /** @param array<array-key, mixed> $intent */
-    public function authorization(array $intent): string
+    public function authorization(#[\SensitiveParameter] array $intent): string
     {
         return $this->guard(function () use ($intent): string {
             $this->validateIntent($intent);
@@ -125,7 +125,7 @@ final class OidcClient
      * @param  array<array-key, mixed>  $intent
      * @return TokenBundle
      */
-    public function exchange(array $callback, array $intent): array
+    public function exchange(#[\SensitiveParameter] array $callback, #[\SensitiveParameter] array $intent): array
     {
         return $this->guard(function () use ($callback, $intent): array {
             $this->validateIntent($intent);
@@ -172,7 +172,7 @@ final class OidcClient
      * @param  array<array-key, mixed>  $tokens
      * @return TokenBundle
      */
-    public function refresh(array $tokens): array
+    public function refresh(#[\SensitiveParameter] array $tokens): array
     {
         return $this->guard(function () use ($tokens): array {
             if (! $this->nonempty($tokens['refresh_token'] ?? null)
@@ -204,7 +204,7 @@ final class OidcClient
     }
 
     /** @return array<string, mixed> */
-    public function userInfo(string $accessToken, string $expectedSubject): array
+    public function userInfo(#[\SensitiveParameter] string $accessToken, string $expectedSubject): array
     {
         return $this->guard(function () use ($accessToken, $expectedSubject): array {
             if (! $this->nonempty($accessToken) || ! $this->nonempty($expectedSubject, 128)) {
@@ -335,7 +335,7 @@ final class OidcClient
      *
      * @phpstan-assert LoginIntent $intent
      */
-    private function validateIntent(array $intent): void
+    private function validateIntent(#[\SensitiveParameter] array $intent): void
     {
         if (! $this->nonempty($intent['state'] ?? null, 512) || ! $this->nonempty($intent['nonce'] ?? null, 512)
             || ! is_string($intent['verifier'] ?? null) || ! preg_match('/^[A-Za-z0-9._~-]{43,128}$/D', $intent['verifier'])

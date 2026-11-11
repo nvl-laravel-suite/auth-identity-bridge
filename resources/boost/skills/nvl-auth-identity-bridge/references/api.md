@@ -150,7 +150,7 @@ resolved @phpstan-assert array{contract: 'platform-consumer-command-reference.v1
 ```text
 class IdentityPlatform\Laravel\Consumer\ConsumerClient
 public function __construct(IdentityPlatform\Laravel\Auth\SessionManager $sessions, IdentityPlatform\Laravel\Repositories\SessionRepository $rows, IdentityPlatform\Laravel\Support\IdentityVault $vault, IdentityPlatform\Laravel\Support\IdentityConfig $config, IdentityPlatform\Laravel\Support\IdentityHttp $http, IdentityPlatform\Laravel\Delegation\OverlayRepository $overlays, IdentityPlatform\Laravel\Consumer\CommandJournal $commands): mixed
-public function call(Illuminate\Http\Request $request, string $operation, array $input=[]): array
+public function call(Illuminate\Http\Request $request, string $operation, #[SensitiveParameter()] array $input=[]): array
 @param array<array-key, mixed> $input
 @return array<array-key, mixed>
 public function operationStatus(Illuminate\Http\Request $request, array $reference): IdentityPlatform\Laravel\Consumer\ManagedCommandResult
@@ -159,7 +159,7 @@ public function readMetadata(Illuminate\Http\Request $request, array $input): Id
 @param array<array-key, mixed> $input
 public function readProfile(Illuminate\Http\Request $request, array $input): IdentityPlatform\Laravel\Consumer\ManagedReadResult
 @param array<array-key, mixed> $input
-public function report(array $receipt, string $outcome, ?string $resultCode=null): array
+public function report(#[SensitiveParameter()] array $receipt, string $outcome, ?string $resultCode=null): array
 @param array<array-key, mixed> $receipt
 @return array<array-key, mixed>
 public function updateMetadata(Illuminate\Http\Request $request, #[SensitiveParameter()] array $input): IdentityPlatform\Laravel\Consumer\ManagedCommandResult

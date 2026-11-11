@@ -25,12 +25,12 @@ final class IdTokenVerifier implements IdTokenVerifierInterface
         $this->verifier = $verifier;
     }
 
-    public function withAccessToken(?string $accessToken): static
+    public function withAccessToken(#[\SensitiveParameter] ?string $accessToken): static
     {
         return $this->withHashInput('at_hash', $accessToken);
     }
 
-    public function withCode(?string $code): static
+    public function withCode(#[\SensitiveParameter] ?string $code): static
     {
         return $this->withHashInput('c_hash', $code);
     }
@@ -57,8 +57,13 @@ final class IdTokenVerifier implements IdTokenVerifierInterface
     }
 
     /** @return array<string, mixed> */
-    public function verify(string $jwt): array
+    public function verify(#[\SensitiveParameter] string $jwt): array
     {
+        // A foreign algorithm is a forged token, not a provider outage; refuse it before any key is selected.
+        $header = json_decode((string) base64_decode(strtr(explode('.', $jwt)[0], '-_', '+/'), true), true);
+        if (! is_array($header) || ($header['alg'] ?? null) !== $this->algorithm) {
+            throw new IdentityException('oidc_token_invalid', 401);
+        }
         $claims = $this->verifier->verify($jwt);
         $hashAlgorithm = match ($this->algorithm) {
             'EdDSA' => 'sha512',
@@ -79,7 +84,7 @@ final class IdTokenVerifier implements IdTokenVerifierInterface
         return $claims;
     }
 
-    private function withHashInput(string $claim, ?string $value): static
+    private function withHashInput(string $claim, #[\SensitiveParameter] ?string $value): static
     {
         $copy = clone $this;
         $copy->hashInputs[$claim] = $value;

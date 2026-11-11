@@ -98,7 +98,7 @@ class DelegatedActionRunner
      * @param  array<array-key, mixed>  $receipt
      * @return AdmissionReceipt
      */
-    private function validateReceipt(array $receipt, IdentitySession $row, IdentityDelegation $overlay, string $operation, string $resourceType, string $resourceId, string $digest, string $idempotencyKey): array
+    private function validateReceipt(#[\SensitiveParameter] array $receipt, IdentitySession $row, IdentityDelegation $overlay, string $operation, string $resourceType, string $resourceId, string $digest, string $idempotencyKey): array
     {
         $expectedDecision = $overlay->decision;
         Contract::require(is_array($expectedDecision) && isset($expectedDecision['delegationId']), 'invalid_delegation_admission', 502);
@@ -117,7 +117,7 @@ class DelegatedActionRunner
     /**
      * @param  AdmissionReceipt  $receipt
      */
-    private function requireAdmissionLive(array $receipt, int $admissionDeadline): void
+    private function requireAdmissionLive(#[\SensitiveParameter] array $receipt, int $admissionDeadline): void
     {
         $verified = Contract::date($receipt['decision']['actor']['assurance']['verifiedAt']);
         $now = microtime(true);

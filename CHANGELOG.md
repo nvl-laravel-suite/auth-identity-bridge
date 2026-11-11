@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Match retained consumer commands, their receipts, redeemed delegation versions and the selected application context regardless of JSON object key order, so MySQL's native JSON columns no longer turn replays into `idempotency_conflict`, lose commit recovery or clear a valid context.
+- Send provider requests without the host's global HTTP client middleware and options, so an ambient retry cannot replay a single-use code, refresh or import request and ambient credentials, headers or URL rewrites cannot reach the provider.
+- Stop a provider download as soon as it exceeds the configured response limit instead of only checking the size after buffering it.
+- Refuse an ID token signed with any algorithm other than the configured one as `oidc_token_invalid` (401) rather than reporting a provider outage.
+- Keep access, refresh, authorization-code, login-state and resource credentials out of exception stack-trace arguments.
+- Make `IdentityLogin`, `IdentitySession` and `IdentityInbox` mass-prunable so the host's `model:prune` schedule removes abandoned sign-in transactions, sessions past their absolute deadline and receipts beyond every replay window; these rows previously accumulated forever.
+- Keep delegated reporting capabilities and consumer operation input out of exception stack-trace arguments (`ConsumerClient::call()` and `::report()` now mark those parameters sensitive).
+- Refuse a value of the wrong backing type in the `EnumValue` native transform as `native_transform_invalid` instead of raising a `TypeError`.
+- Remove the unreferenced internal `Support\IdentityPsrClient`; the OIDC client already sends every library request through its own bounded transport.
+- Require Laravel 13.30 or later. The package calls `Lock::refresh()` and `Http::withoutGlobalConfiguration()`, which earlier 13.x releases do not provide.
+
 ## [7.0.1] - 2026-11-05
 
 ### Fixed

@@ -29,7 +29,11 @@ final class EnumValue implements NativeValueTransform
         }
         self::validate($options);
         $class = $options['enum'];
-        Contract::require((is_string($value) || is_int($value)) && ($enum = $class::tryFrom($value)) !== null, 'native_transform_invalid', 503);
+        // tryFrom() raises a TypeError, not a refusal, for a value of the other backing type.
+        $integerBacked = (string) (new \ReflectionEnum($class))->getBackingType() === 'int';
+        Contract::require($integerBacked ? is_int($value) : is_string($value), 'native_transform_invalid', 503);
+        $enum = $class::tryFrom($value);
+        Contract::require($enum !== null, 'native_transform_invalid', 503);
 
         return $enum->value;
     }

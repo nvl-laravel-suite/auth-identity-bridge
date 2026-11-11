@@ -22,6 +22,7 @@ use IdentityPlatform\Laravel\Support\IdentityConfig;
 use IdentityPlatform\Laravel\Support\IdentityVault;
 use IdentityPlatform\Laravel\Sync\UserSynchronizer;
 use IdentityPlatform\Laravel\Tests\Oidc\ProviderFixture;
+use IdentityPlatform\Laravel\Tests\Support\NativeJsonOrder;
 use IdentityPlatform\Laravel\Tests\TestCase;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
@@ -112,6 +113,20 @@ class ApplicationContextTest extends TestCase
         foreach (['bindingHash', 'central-source', 'userId', '"sourceId"'] as $private) {
             self::assertStringNotContainsString($private, json_encode($state->applicationContext));
         }
+    }
+
+    public function test_selection_survives_native_json_reordering_of_its_stored_scope(): void
+    {
+        $manager = $this->manager();
+        $manager->select($this->request);
+        $stored = DB::table('identity_sessions')->where('id', 'source')->value('application_context');
+        self::assertIsString($stored);
+        $reordered = NativeJsonOrder::encode(json_decode($stored, true, flags: JSON_THROW_ON_ERROR));
+        self::assertNotSame($stored, $reordered);
+        DB::table('identity_sessions')->where('id', 'source')->update(['application_context' => $reordered]);
+
+        self::assertSame('one', $manager->current($this->request)?->resourceId);
+        self::assertSame(3, $this->source->fresh()->context_version);
     }
 
     public function test_stale_selection_version_and_forged_resource_are_refused(): void

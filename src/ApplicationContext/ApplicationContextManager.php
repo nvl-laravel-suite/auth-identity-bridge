@@ -144,12 +144,12 @@ final class ApplicationContextManager
     {
         $stored = $row->application_context;
         $scope = ApplicationContextScope::from($this->config, $row);
-        if (! is_array($stored) || ($stored['scope'] ?? null) !== (array) $scope) {
+        if (! is_array($stored) || ! Contract::same($stored['scope'] ?? null, (array) $scope)) {
             return null;
         }
         $data = $stored['descriptor'] ?? null;
         if (! is_array($data) || ! is_string($data['kind'] ?? null) || ! is_string($data['resourceId'] ?? null) || ! is_string($data['version'] ?? null) || ! is_string($data['expiresAt'] ?? null)
-            || ($data['consumerBinding'] ?? null) !== $scope->bindingHash || ($data['actorSubject'] ?? null) !== $scope->actorSubject || ($data['providerSelection'] ?? null) !== $this->selection($row)
+            || ($data['consumerBinding'] ?? null) !== $scope->bindingHash || ($data['actorSubject'] ?? null) !== $scope->actorSubject || ! Contract::same($data['providerSelection'] ?? null, $this->selection($row))
             || (Contract::date($data['expiresAt']) ?? 0) <= (float) now()->format('U.u')) {
             return null;
         }

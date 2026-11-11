@@ -41,6 +41,21 @@ The doctor validates local configuration without contacting the provider. A conf
 
 Resolve a trusted named consumer with `Identity::consumer($trustedName, $request)` and obtain services from that graph. Use `Identity::browser()` only on an admitted browser request. Preserve issuer/client/application/subject/session bindings, independent cookies, PKCE/nonce, one-use intents, Origin/CSRF checks, live deadlines and final write fences. Keep the actor distinct from a delegated effective subject. Never associate accounts by email, derive authority from native rows or replay an ambiguous write under a new idempotency key.
 
+## Pruning expired rows
+
+Abandoned sign-in transactions, sessions whose browser never returned, and callback receipts are not removed by a request. Schedule Laravel's model pruning for the three models; they are not discovered automatically, so name them:
+
+```php
+use IdentityPlatform\Laravel\Models\IdentityInbox;
+use IdentityPlatform\Laravel\Models\IdentityLogin;
+use IdentityPlatform\Laravel\Models\IdentitySession;
+use Illuminate\Support\Facades\Schedule;
+
+Schedule::command('model:prune', ['--model' => [IdentityLogin::class, IdentitySession::class, IdentityInbox::class]])->hourly();
+```
+
+Only rows that verification already refuses are selected: login transactions past `expires_at`, sessions past the absolute deadline fixed at sign-in (an idle-expired session waits for that deadline), and receipts older than one day, long after their signed message stops verifying. Mass pruning dispatches no `LocalSessionEnded` notification and sends no remote token revocation. The framework session table keeps its own garbage collection.
+
 ## Agent integration
 
 Publish the complete portable skill with `php artisan vendor:publish --tag=nvl-auth-identity-bridge-skills --no-interaction` and invoke `$nvl-auth-identity-bridge`. The [entry point](resources/boost/skills/nvl-auth-identity-bridge/SKILL.md), [usage](resources/boost/skills/nvl-auth-identity-bridge/references/usage.md) and [workflow recipes](resources/boost/skills/nvl-auth-identity-bridge/references/workflows.md) remain usable from the installed package without a provider checkout. Laravel Boost can also discover the packaged skill when installed as a consumer development tool.

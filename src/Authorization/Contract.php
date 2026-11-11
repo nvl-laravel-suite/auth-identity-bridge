@@ -75,6 +75,24 @@ final class Contract
             && $expires > $now && $expires > $issued && $expires - $issued <= $maximum && $now - $issued <= $maximum;
     }
 
+    /** Strict equality that ignores object key order, which native JSON columns do not preserve. */
+    public static function same(mixed $left, mixed $right): bool
+    {
+        return self::canonical($left) === self::canonical($right);
+    }
+
+    private static function canonical(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+        if (! array_is_list($value)) {
+            ksort($value, SORT_STRING);
+        }
+
+        return array_map(self::canonical(...), $value);
+    }
+
     /**
      * @template TKey of array-key
      *
