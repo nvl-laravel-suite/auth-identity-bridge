@@ -223,6 +223,82 @@ class HeadlessLifecycleTest extends TestCase
         self::assertSame('/auth/contexts', $api->completeSignIn($request));
     }
 
+    /** @param  array<string, string>  $callback */
+    private function respond(Request $request, array $callback): void
+    {
+        $request->query->replace($callback);
+        $request->server->set('QUERY_STRING', http_build_query($callback));
+    }
+
+    public function test_declined_sign_in_consumes_its_transaction_and_returns_to_the_start_without_exchange(): void
+    {
+        $api = $this->lifecycle();
+        $request = $this->browser();
+        $callback = $this->prepareCallback($request);
+        Event::fake([AuthenticatedSessionEstablished::class]);
+        // Identity's "Back to {app}": a standard error response carrying the consumer's own state.
+        $this->respond($request, ['error' => 'access_denied', 'state' => $callback['state']]);
+        self::assertSame('/documents', $api->completeSignIn($request));
+        self::assertCount(0, $this->provider->tokenForms());
+        self::assertSame(0, IdentitySession::count());
+        Event::assertNotDispatched(AuthenticatedSessionEstablished::class);
+        try {
+            $api->completeSignIn($request);
+            self::fail('Declined callback replay accepted');
+        } catch (IdentityException $error) {
+            self::assertSame('invalid_login_state', $error->errorCode);
+        }
+    }
+
+    public function test_decline_without_a_live_transaction_is_rejected(): void
+    {
+        $api = $this->lifecycle();
+        $request = $this->browser();
+        $this->prepareCallback($request);
+        $this->respond($request, ['error' => 'access_denied', 'state' => 'forged-state']);
+        try {
+            $api->completeSignIn($request);
+            self::fail('Forged decline accepted');
+        } catch (IdentityException $error) {
+            self::assertSame('invalid_login_state', $error->errorCode);
+        }
+        self::assertSame(0, IdentitySession::count());
+    }
+
+    public function test_decline_from_another_issuer_or_with_a_code_is_not_a_return(): void
+    {
+        foreach ([['iss' => 'https://other-issuer.test'], ['code' => 'synthetic-code']] as $extra) {
+            $api = $this->lifecycle();
+            $request = $this->browser();
+            $callback = $this->prepareCallback($request);
+            $this->respond($request, ['error' => 'access_denied', 'state' => $callback['state']] + $extra);
+            try {
+                $api->completeSignIn($request);
+                self::fail('Ambiguous decline accepted');
+            } catch (IdentityException $error) {
+                self::assertSame('oidc_callback_invalid', $error->errorCode);
+            }
+        }
+        self::assertCount(0, $this->provider->tokenForms());
+        self::assertSame(0, IdentitySession::count());
+    }
+
+    public function test_other_authorization_errors_remain_failures(): void
+    {
+        $api = $this->lifecycle();
+        $request = $this->browser();
+        $callback = $this->prepareCallback($request);
+        $this->respond($request, ['error' => 'server_error', 'state' => $callback['state']]);
+        try {
+            $api->completeSignIn($request);
+            self::fail('Provider error accepted');
+        } catch (IdentityException $error) {
+            self::assertSame('oidc_callback_invalid', $error->errorCode);
+        }
+        self::assertCount(0, $this->provider->tokenForms());
+        self::assertSame(0, IdentitySession::count());
+    }
+
     public function test_failed_login_emits_no_authenticated_event(): void
     {
         $api = $this->lifecycle();

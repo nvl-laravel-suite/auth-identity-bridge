@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Treat an OAuth `error=access_denied` callback whose `state` matches a live login transaction as the person going back (Identity's "Back to {app}"): consume the transaction, exchange nothing and return to the path the sign-in started from, instead of showing "Sign in again" with HTTP 401. A decline without a matching transaction, one carrying a `code` or another issuer, and every other `error` value still fail as before.
+
 ## [7.0.3] - 2026-11-13
 
 ### Fixed

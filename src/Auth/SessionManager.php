@@ -51,6 +51,12 @@ class SessionManager
     {
         $callback = CallbackInput::validate($request, $callback);
         $intent = $this->logins->consume((string) ($callback['state'] ?? ''), $request->session()->getId(), 'login');
+        if ($this->declined($callback)) {
+            // The person chose "Back to {app}" at Identity (RFC 6749 4.1.2.1).
+            // The state matched and consumed a live transaction above, so this is
+            // a deliberate return: exchange nothing and go back to where it began.
+            return SafeReturn::path($intent['return_path'] ?? '/');
+        }
         $tokens = $this->oidc->exchange($callback, $intent);
         $contexts = $this->authorization->contexts($tokens['access_token'], $tokens['subject'], $tokens['sid']);
         $this->requireLiveIntent($intent);
@@ -77,6 +83,18 @@ class SessionManager
         }
 
         return $path;
+    }
+
+    /**
+     * A pure access_denied answer: no code and, when sent, this issuer.
+     *
+     * @param  array<array-key, string>  $callback
+     */
+    private function declined(#[\SensitiveParameter] array $callback): bool
+    {
+        return ($callback['error'] ?? null) === 'access_denied'
+            && ! isset($callback['code'])
+            && (! isset($callback['iss']) || $callback['iss'] === $this->config->issuer());
     }
 
     /** @phpstan-impure Refreshes, touches or retires the persisted browser session. */
