@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace IdentityPlatform\Laravel\Tests\Support;
 
-/** Reproduces MySQL's native JSON normalization: object keys are stored by length, then bytes. */
+/** Reorders JSON object keys while preserving array order and values. */
 final class NativeJsonOrder
 {
     public static function normalize(mixed $value): mixed

@@ -62,6 +62,6 @@ Publish the complete portable skill with `php artisan vendor:publish --tag=nvl-a
 
 ## Verification
 
-From the suite source checkout, run `herd php tools/run-package-tests.php auth-identity-bridge --concurrency=1`. In a standalone development checkout with development dependencies installed, run `composer --no-plugins verify`. Default tests use isolated SQLite. `phpunit.postgres.xml` is a separately opted-in PostgreSQL qualification; it does not establish MySQL, MariaDB or production adapter coverage.
+From the suite source checkout, run `herd php tools/run-package-tests.php auth-identity-bridge --concurrency=1`. In a standalone development checkout with development dependencies installed, run `composer --no-plugins verify`. Default tests use isolated SQLite. `phpunit.postgres.xml` provides opt-in PostgreSQL qualification. Production adapters require their own checks.
 
 The source suite owns release certification; GitHub publishing workflows deliver locally certified artifacts. Test output and release receipts apply to their exact source snapshot. Package tests, metadata checks and dependency audits do not establish genuine provider interoperability, browser acceptance, external callback delivery, database contention or deployment readiness. See [contributing](CONTRIBUTING.md), [security](SECURITY.md) and [changelog](CHANGELOG.md).

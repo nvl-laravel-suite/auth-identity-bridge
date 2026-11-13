@@ -57,8 +57,15 @@ class DelegationRequestBudgetTest extends TestCase
             $path = parse_url($request->url(), PHP_URL_PATH);
             if ($path === '/api/consumer/v1/delegations/check') {
                 $this->checks++;
+                $now = microtime(true);
+                $checkedAt = $this->shortDecision
+                    ? \DateTimeImmutable::createFromFormat('U.u', sprintf('%.6F', $now))->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:s.u\Z')
+                    : gmdate('Y-m-d\TH:i:s\Z');
+                $validUntil = $this->shortDecision
+                    ? \DateTimeImmutable::createFromFormat('U.u', sprintf('%.6F', $now + 0.12))->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:s.u\Z')
+                    : gmdate('Y-m-d\TH:i:s\Z', time() + 4);
 
-                return Http::response($this->envelope([...$this->decision, 'checkedAt' => gmdate('Y-m-d\TH:i:s\Z'), 'decisionValidUntil' => gmdate('Y-m-d\TH:i:s\Z', time() + ($this->shortDecision ? 1 : 4))]));
+                return Http::response($this->envelope([...$this->decision, 'checkedAt' => $checkedAt, 'decisionValidUntil' => $validUntil]));
             }
             if ($path === '/api/consumer/v1/delegations/authorize-operation') {
                 $this->admissions++;
@@ -135,7 +142,7 @@ class DelegationRequestBudgetTest extends TestCase
         $this->shortDecision = true;
         $manager = app(DelegationManager::class);
         $manager->check($this->browser, 'documents.update');
-        usleep(1100000);
+        usleep(150000);
         $this->shortDecision = false;
         $this->assertSame('target-person', $manager->check($this->browser, 'documents.update')->principal()->subject());
         $this->assertSame(2, $this->checks);

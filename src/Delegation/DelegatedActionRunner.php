@@ -13,6 +13,7 @@ use IdentityPlatform\Laravel\Models\IdentitySession;
 use IdentityPlatform\Laravel\Support\IdentityConfig;
 use IdentityPlatform\Laravel\Support\IdentityVault;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Throwable;
 
@@ -64,6 +65,9 @@ class DelegatedActionRunner
                     throw new IdentityException('delegation_action_connection_mismatch', 503);
                 }
                 $locked = $this->overlays->find($row->id, true);
+                if ($existing = $this->actions->find($id, true)) {
+                    return $this->replay($existing, $digest);
+                }
                 $locked = $this->delegations->assertCurrent($row, $locked, true);
                 if ($locked->status !== 'active' || $locked->handle_vault !== $overlay->handle_vault || $locked->expires_at->isPast()) {
                     throw new IdentityException('delegation_unavailable', 403);
@@ -80,6 +84,9 @@ class DelegatedActionRunner
                 return $result;
             });
         } catch (Throwable $error) {
+            if ($error instanceof UniqueConstraintViolationException && ($existing = $this->actions->find($id))) {
+                return $this->replay($existing, $digest);
+            }
             $this->actions->transaction(function () use ($id, $values): void {
                 if (! $this->actions->find($id, true)) {
                     $this->actions->create([...$values, 'outcome' => 'rejected', 'result' => null]);

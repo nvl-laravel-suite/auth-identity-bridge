@@ -326,10 +326,20 @@ class DelegationManagerTest extends TestCase
 
     public function test_receipt_expiring_while_waiting_for_resource_lock_prevents_mutation(): void
     {
-        $runner = $this->actions(fn (array $receipt) => [...$receipt, 'expiresAt' => gmdate('Y-m-d\TH:i:s\Z', time() + 1)]);
+        $runner = $this->actions(function (array $receipt): array {
+            $now = microtime(true);
+            $admittedAt = \DateTimeImmutable::createFromFormat('U.u', sprintf('%.6F', $now))
+                ->setTimezone(new \DateTimeZone('UTC'))
+                ->format('Y-m-d\TH:i:s.u\Z');
+            $expiresAt = \DateTimeImmutable::createFromFormat('U.u', sprintf('%.6F', $now + 0.12))
+                ->setTimezone(new \DateTimeZone('UTC'))
+                ->format('Y-m-d\TH:i:s.u\Z');
+
+            return [...$receipt, 'admittedAt' => $admittedAt, 'expiresAt' => $expiresAt];
+        });
         try {
             $this->runAction($runner, function () {
-                usleep(1100000);
+                usleep(150000);
 
                 return DB::table('owned_documents')->where('id', 1)->first();
             });
@@ -430,13 +440,15 @@ class DelegationManagerTest extends TestCase
     public function test_operator_assurance_expiring_while_waiting_for_resource_lock_prevents_mutation(): void
     {
         $runner = $this->actions(function (array $receipt): array {
-            $receipt['decision']['actor']['assurance']['verifiedAt'] = gmdate('Y-m-d\TH:i:s\Z', time() - 299);
+            $receipt['decision']['actor']['assurance']['verifiedAt'] = \DateTimeImmutable::createFromFormat('U.u', sprintf('%.6F', microtime(true) - 299.88))
+                ->setTimezone(new \DateTimeZone('UTC'))
+                ->format('Y-m-d\TH:i:s.u\Z');
 
             return $receipt;
         });
         try {
             $this->runAction($runner, function () {
-                usleep(1100000);
+                usleep(150000);
 
                 return DB::table('owned_documents')->where('id', 1)->first();
             });

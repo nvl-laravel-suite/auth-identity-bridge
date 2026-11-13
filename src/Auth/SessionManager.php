@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IdentityPlatform\Laravel\Auth;
 
 use IdentityPlatform\Laravel\Authorization\AuthorizationClient;
+use IdentityPlatform\Laravel\Authorization\Contract;
 use IdentityPlatform\Laravel\Authorization\Principal;
 use IdentityPlatform\Laravel\Events\AuthenticatedSessionEstablished;
 use IdentityPlatform\Laravel\Events\ContextSelected;
@@ -194,7 +195,7 @@ class SessionManager
         $contexts = $this->authorization->contexts($tokens['access_token'], $row->subject, $row->sid);
         $found = false;
         foreach ($contexts['contexts'] as $choice) {
-            if ($choice['selection'] == $selection) {
+            if (Contract::same($choice['selection'], $selection)) {
                 $found = true;
                 break;
             }

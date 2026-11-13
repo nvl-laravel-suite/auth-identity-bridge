@@ -12,7 +12,7 @@ use IdentityPlatform\Laravel\Tests\Support\NativeJsonOrder;
 use IdentityPlatform\Laravel\Tests\TestCase;
 use Illuminate\Support\Facades\DB;
 
-/** A native JSON column (MySQL) returns object keys in its own order, never the written one. */
+/** Stored JSON object keys can be returned in a different order from the original input. */
 final class CommandJournalNativeJsonTest extends TestCase
 {
     public function test_replayed_command_matches_its_retained_reference_after_native_json_reordering(): void

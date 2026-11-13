@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\Capsule\Manager;
 
-require dirname(__DIR__, 2).'/vendor/autoload.php';
+require dirname(__DIR__).'/bootstrap.php';
 
 try {
     $input = json_decode(file_get_contents($argv[1]), true, flags: JSON_THROW_ON_ERROR);

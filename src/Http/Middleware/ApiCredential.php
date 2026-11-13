@@ -35,8 +35,13 @@ class ApiCredential
             $response = $next($request);
         } catch (IdentityException $e) {
             $response = response()->json(['error' => $e->errorCode], $e->status);
+            if ($e->retryAfter !== null) {
+                $response->headers->set('Retry-After', (string) $e->retryAfter);
+            }
         }
         $response->headers->set('Cache-Control', 'no-store');
+        $response->headers->set('Referrer-Policy', 'strict-origin');
+        $response->headers->set('X-Content-Type-Options', 'nosniff');
 
         return $response;
     }

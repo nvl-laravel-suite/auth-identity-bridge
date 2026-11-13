@@ -55,7 +55,7 @@ trait UsesIsolatedPostgres
         $label = 'identity-qualification-'.bin2hex(random_bytes(8));
         file_put_contents($directory.'/input.json', json_encode(['connection' => [...$configuration, 'application_name' => $label], 'session' => $sessionId, 'result' => $directory.'/result.json'], JSON_THROW_ON_ERROR));
         chmod($directory.'/input.json', 0600);
-        $process = new Process([PHP_BINARY, __DIR__.'/contender.php', $directory.'/input.json'], dirname(__DIR__, 2), timeout: 10);
+        $process = new Process([PHP_BINARY, '-d', 'opcache.enable_cli=1', __DIR__.'/contender.php', $directory.'/input.json'], dirname(__DIR__, 2), timeout: 10);
         $process->start();
         $waiting = false;
         $deadline = microtime(true) + 3;

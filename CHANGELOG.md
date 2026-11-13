@@ -2,11 +2,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Re-check delegated-action idempotency under the session overlay `FOR UPDATE` lock and replay concurrent unique races cleanly, compare contract identities strictly in `SessionManager`, and preserve `Retry-After` and security headers on rate-limited and callback responses.
+
 ## [7.0.2] - 2026-11-11
 
 ### Fixed
 
-- Match retained consumer commands, their receipts, redeemed delegation versions and the selected application context regardless of JSON object key order, so MySQL's native JSON columns no longer turn replays into `idempotency_conflict`, lose commit recovery or clear a valid context.
+- Match retained consumer commands, their receipts, redeemed delegation versions and the selected application context regardless of JSON object key order, so reordered JSON object keys no longer turn replays into `idempotency_conflict`, lose commit recovery or clear a valid context.
 - Send provider requests without the host's global HTTP client middleware and options, so an ambient retry cannot replay a single-use code, refresh or import request and ambient credentials, headers or URL rewrites cannot reach the provider.
 - Stop a provider download as soon as it exceeds the configured response limit instead of only checking the size after buffering it.
 - Refuse an ID token signed with any algorithm other than the configured one as `oidc_token_invalid` (401) rather than reporting a provider outage.

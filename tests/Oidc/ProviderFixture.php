@@ -36,13 +36,15 @@ final class ProviderFixture
 
     public int $tokenDelayMicroseconds = 0;
 
+    private static ?string $cachedKeypair = null;
+
     private string $secretKey;
 
     private string $publicKey;
 
     public function __construct()
     {
-        $pair = sodium_crypto_sign_keypair();
+        $pair = self::$cachedKeypair ??= sodium_crypto_sign_keypair();
         $this->secretKey = sodium_crypto_sign_secretkey($pair);
         $this->publicKey = sodium_crypto_sign_publickey($pair);
         $this->metadata = [

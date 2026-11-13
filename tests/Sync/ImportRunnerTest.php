@@ -201,9 +201,16 @@ class ImportRunnerTest extends TestCase
 
     private function people(int $count): void
     {
-        for ($i = 1; $i <= $count; $i++) {
-            RunnerSource::$ids[] = RunnerPerson::create(['name' => 'Local', 'email' => 'local'.$i.'@example.test'])->id;
+        if ($count <= 0) {
+            return;
         }
+        $now = now();
+        $rows = [];
+        for ($i = 1; $i <= $count; $i++) {
+            $rows[] = ['name' => 'Local', 'email' => 'local'.$i.'@example.test', 'created_at' => $now, 'updated_at' => $now];
+        }
+        DB::table('runner_people')->insert($rows);
+        RunnerSource::$ids = array_values(array_merge(RunnerSource::$ids, array_slice(RunnerPerson::query()->orderBy('id')->pluck('id')->all(), -$count)));
     }
 
     private function provider(?\Closure $after = null): void

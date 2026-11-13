@@ -8,6 +8,7 @@ use GuzzleHttp\Psr7\Request as PsrRequest;
 use IdentityPlatform\Laravel\Auth\SessionManager;
 use IdentityPlatform\Laravel\Authorization\AuthorizationClient;
 use IdentityPlatform\Laravel\Exceptions\IdentityException;
+use IdentityPlatform\Laravel\Http\Middleware\ApiCredential;
 use IdentityPlatform\Laravel\Http\Middleware\BrowserSafety;
 use IdentityPlatform\Laravel\Oidc\OidcClient;
 use IdentityPlatform\Laravel\Repositories\SessionRepository;
@@ -181,5 +182,25 @@ class RateLimitResponseTest extends TestCase
         $this->assertTrue(hash_equals($vault, $current->token_vault), 'Retryable refresh failure must preserve the synthetic vault');
         $this->assertSame(1, $current->token_generation);
         $this->assertCount(1, Http::recorded(fn (OutboundRequest $outbound) => $outbound->url() === ProviderFixture::ISSUER.'/oauth2/token'));
+    }
+
+    public function test_api_credential_middleware_preserves_retry_after_and_defensive_headers(): void
+    {
+        $request = Request::create('https://consumer.test/api/resource');
+        $request->headers->set('Authorization', 'Bearer synthetic-token');
+        Http::fake(['*' => Http::response(['error' => 'rate_limited'], 429, ['Retry-After' => '25'])]);
+
+        $response = app(ApiCredential::class)->handle(
+            $request,
+            fn () => response()->json(['ok' => true]),
+            'service_token',
+        );
+
+        $this->assertSame(429, $response->getStatusCode());
+        $this->assertSame(['error' => 'rate_limited'], json_decode((string) $response->getContent(), true));
+        $this->assertSame('25', $response->headers->get('Retry-After'));
+        $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+        $this->assertSame('strict-origin', $response->headers->get('Referrer-Policy'));
+        $this->assertSame('nosniff', $response->headers->get('X-Content-Type-Options'));
     }
 }

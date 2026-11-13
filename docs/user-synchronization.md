@@ -190,4 +190,4 @@ NODE_USE_SYSTEM_CA=1 LOCAL_IDENTITY_EVENT_URL=https://tss-auth-test.test/identit
 
 The Laravel queue/scheduler commands above run from the sample directory. Run all worker processes under the deployment's normal supervisor for ongoing operation; the acceptance tests use bounded worker invocations.
 
-True concurrent PostgreSQL/MySQL host locking, production shared-lock leases, distributed load, external delivery/outage behavior and retention remain separate qualification gates. Local SQLite/Herd acceptance does not establish them.
+True concurrent PostgreSQL host locking, production shared-lock leases, distributed load, external delivery/outage behavior and retention remain separate qualification gates. Local SQLite/Herd acceptance does not establish them.

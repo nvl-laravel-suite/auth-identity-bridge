@@ -83,7 +83,7 @@ class AbilityDocumentPolicy
 
     public function slow(AbilityUser $user, AbilityDocument $document): bool
     {
-        usleep(1_100_000);
+        usleep(150_000);
 
         return true;
     }
@@ -275,7 +275,9 @@ final class NamedAbilityTest extends TestCase
     {
         $this->integrate();
         app(AbilityRegistry::class)->map('documents.slow', 'documents.update', AbilityDocumentPolicy::class, 'slow');
-        $this->decision['expires_at'] = gmdate('Y-m-d\TH:i:s\Z', time() + 1);
+        $this->decision['expires_at'] = \DateTimeImmutable::createFromFormat('U.u', sprintf('%.6F', microtime(true) + 0.12))
+            ->setTimezone(new \DateTimeZone('UTC'))
+            ->format('Y-m-d\TH:i:s.u\Z');
         self::assertFalse(Gate::allows('documents.slow', new AbilityDocument($this->owner->id)));
     }
 

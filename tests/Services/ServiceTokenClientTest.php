@@ -163,7 +163,7 @@ final class ServiceTokenClientTest extends TestCase
     public function test_token_that_expires_during_network_transit_is_refused(): void
     {
         Http::fake(function () {
-            usleep(1100000);
+            usleep(1020000);
 
             return Http::response(array_replace($this->tokenResponse(), ['expires_in' => 1]));
         });

@@ -5,7 +5,7 @@ declare(strict_types=1);
 use IdentityPlatform\Laravel\Tests\Postgres\ApplicationContextPostgresTest;
 use PHPUnit\TextUI\Configuration\Builder;
 
-require dirname(__DIR__, 2).'/vendor/autoload.php';
+require dirname(__DIR__).'/bootstrap.php';
 
 umask(0077);
 $validated = false;

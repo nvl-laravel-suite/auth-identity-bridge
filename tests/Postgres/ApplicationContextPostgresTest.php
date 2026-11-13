@@ -162,7 +162,11 @@ class ApplicationContextPostgresTest extends TestCase
     private function removeFixtureDirectories(): void
     {
         foreach ($this->fixtureDirectories as $directory) {
-            $this->app['files']->deleteDirectory($directory);
+            if ($this->contenderInput !== null) {
+                $this->app['files']->deleteDirectory($directory);
+            } elseif (is_string($directory) && is_dir($directory)) {
+                $this->app['files']->cleanDirectory($directory);
+            }
         }
     }
 
@@ -253,7 +257,7 @@ class ApplicationContextPostgresTest extends TestCase
         } finally {
             umask($mask);
         }
-        $process = new Process([PHP_BINARY, __DIR__.'/application-context-contender.php', $directory.'/input.json'], dirname(__DIR__, 2), timeout: 15);
+        $process = new Process([PHP_BINARY, '-d', 'opcache.enable_cli=1', __DIR__.'/application-context-contender.php', $directory.'/input.json'], dirname(__DIR__, 2), timeout: 15);
         $this->workers[] = [$process, $directory];
         $process->start();
 

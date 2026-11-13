@@ -45,12 +45,15 @@ class CallbackController
             $response = response()->json($work());
         } catch (IdentityException $error) {
             $response = response()->json(['error' => $error->errorCode], $error->status);
+            if ($error->retryAfter !== null) {
+                $response->headers->set('Retry-After', (string) $error->retryAfter);
+            }
         } catch (Throwable) {
             // Database and infrastructure messages can contain sensitive request facts.
             $response = response()->json(['error' => 'callback_unavailable'], 503);
         }
 
-        return $response->header('Cache-Control', 'no-store')->header('X-Content-Type-Options', 'nosniff');
+        return $response->header('Cache-Control', 'no-store')->header('Referrer-Policy', 'strict-origin')->header('X-Content-Type-Options', 'nosniff');
     }
 
     private function mediaType(Request $request): string

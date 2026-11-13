@@ -137,8 +137,8 @@ final class OidcClientTest extends TestCase
         $tokens = $this->exchange();
         $tokens['claims']['exp'] = time() - 1;
         $this->provider->omitRefreshIdToken = true;
-        $this->provider->tokenDelayMicroseconds = 1_100_000;
         $before = time();
+        $this->provider->tokenDelayMicroseconds = max(20_000, (int) ceil((1.03 - (microtime(true) - $before)) * 1_000_000));
         $refreshed = $this->app->make(OidcClient::class)->refresh($tokens);
         self::assertLessThanOrEqual($before + 300, $refreshed['expires_at']);
         self::assertGreaterThan($before + 290, $refreshed['expires_at']);
