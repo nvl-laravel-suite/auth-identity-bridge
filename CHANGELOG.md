@@ -2,9 +2,17 @@
 
 ## [Unreleased]
 
+## [7.0.3] - 2026-11-13
+
 ### Fixed
 
 - Re-check delegated-action idempotency under the session overlay `FOR UPDATE` lock and replay concurrent unique races cleanly, compare contract identities strictly in `SessionManager`, and preserve `Retry-After` and security headers on rate-limited and callback responses.
+
+<!-- NVL GENERATED CHANGES START -->
+### Changed
+
+- harden package runtime safety, PostgreSQL portability and test performance
+<!-- NVL GENERATED CHANGES END -->
 
 ## [7.0.2] - 2026-11-11
 
